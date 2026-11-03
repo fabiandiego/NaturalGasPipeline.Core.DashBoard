@@ -51,7 +51,7 @@ engine/                                 git submodule: NaturalGasPipeline.Core
 src/NaturalGasPipeline.Dashboard.Engine  bridge: display units ↔ engine, result records (pure C#)
 src/NaturalGasPipeline.Dashboard         Blazor WebAssembly UI, SVG charts and diagrams
 tests/NaturalGasPipeline.Dashboard.Engine.Tests
-.github/workflows/build-deploy.yml      test, update engine, AOT publish, deploy to gh-pages
+.github/workflows/build-deploy.yml      test, update engine, AOT publish, deploy to GitHub Pages (Actions)
 ```
 
 ## Run locally

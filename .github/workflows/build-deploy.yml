@@ -12,6 +12,8 @@ name: build-test-deploy
 #
 # An engine update that breaks the bridge or changes a published example
 # result fails the tests and is neither committed nor deployed.
+#
+# Deployment: GitHub Pages with source "GitHub Actions" (no gh-pages branch).
 
 on:
   push:
@@ -29,7 +31,9 @@ on:
     types: [ core-updated ]
 
 permissions:
-  contents: write
+  contents: write   # commit the engine update
+  pages: write      # deploy to GitHub Pages
+  id-token: write   # required by actions/deploy-pages
 
 concurrency:
   group: build-deploy-${{ github.ref }}
@@ -38,6 +42,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.go.outputs.run == 'true' && github.event_name != 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -160,15 +166,21 @@ jobs:
           print(info)
           PY
 
-      - name: Deploy to the gh-pages branch
+      - name: Upload the site as a Pages artifact
         if: steps.go.outputs.run == 'true' && github.event_name != 'pull_request'
-        shell: bash
-        run: |
-          site="$RUNNER_TEMP/out/wwwroot"
-          cd "$site"
-          git init -q -b gh-pages
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -q -m "Deploy dashboard ${GITHUB_SHA::7} (engine $(python3 -c "import json;print(json.load(open('version.json'))['engineCommit'][:7])"))"
-          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/out/wwwroot
+
+  deploy:
+    # Pages source must be "GitHub Actions" (Settings -> Pages -> Build and deployment).
+    needs: build
+    if: needs.build.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
