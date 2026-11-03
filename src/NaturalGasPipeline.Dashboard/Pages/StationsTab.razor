@@ -190,7 +190,7 @@
                         <div class="grid cols-even" style="gap:0">
                             <Sheet Code="P-04" Title="Total isentropic power">
                                 <Chart Series="@(new[] { new ChartSeries("Power", a.Comparison.Where(c => c.PowerMW is not null).Select(c => ((double)c.Stations, c.PowerMW!.Value)).ToList(), Palette.Blue, Width: 2, Markers: true) })"
-                                       XLabel="Intermediate stations N" YLabel="Power [MW]" H="260" ShowLegend="false" />
+                                       XLabel="Intermediate stations N" YLabel="Power [MW]" W="460" H="300" ShowLegend="false" />
                             </Sheet>
                             <div class="table-wrap" style="padding:10px">
                                 <table class="data">

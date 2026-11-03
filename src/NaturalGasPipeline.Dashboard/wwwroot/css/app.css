@@ -202,7 +202,7 @@ table.data input { width: 100%; min-width: 70px; font: 13px var(--mono); padding
 .sheet .stamp span { padding: 2px 6px; border-right: 1px solid var(--steel-300); border-bottom: 1px solid var(--steel-300); }
 .sheet .stamp span:nth-child(odd) { color: var(--steel-500); }
 .sheet svg { display: block; width: 100%; height: auto; }
-.sheet .body { padding: 10px 10px 34px; }
+.sheet .body { padding: 10px 10px 62px; }
 
 /* ---------- Charts ---------- */
 .chart { width: 100%; height: auto; display: block; font-family: var(--sans); }

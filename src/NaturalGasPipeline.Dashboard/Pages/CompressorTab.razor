@@ -102,12 +102,12 @@
                 <Card Title="Temperature through the train" Flush="true">
                     <Sheet Code="C-02" Title="T along the process">
                         <Chart Series="@(new[] { new ChartSeries("T", TemperaturePath(a), Palette.Flame, Width: 2.4, Markers: true) })"
-                               XLabel="Process point (suction → discharge)" YLabel="Temperature [°C]" H="260" ShowLegend="false" />
+                               XLabel="Process point (suction → discharge)" YLabel="Temperature [°C]" W="460" H="300" ShowLegend="false" />
                     </Sheet>
                 </Card>
                 <Card Title="Power vs stages" Flush="true">
                     <Sheet Code="C-03" Title="Shaft power, same duty">
-                        <Chart Series="@StageSweep()" XLabel="Number of stages" YLabel="Shaft power [MW]" H="260" XMin="1" />
+                        <Chart Series="@StageSweep()" XLabel="Number of stages" YLabel="Shaft power [MW]" W="460" H="300" XMin="1" />
                     </Sheet>
                 </Card>
             </div>

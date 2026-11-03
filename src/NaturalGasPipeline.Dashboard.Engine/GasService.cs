@@ -154,7 +154,7 @@ public static class GasService
                     }
 
                     pts.Add((pm, z));
-                    if (aga is not null && zm is not Aga8DetailModel)
+                    if (aga is not null && zm is not Aga8DetailModel && zm is not IdealGasModel)
                     {
                         double za = aga.Calculate(pp, t);
                         dpts.Add((pm, (z - za) / za * 100.0));

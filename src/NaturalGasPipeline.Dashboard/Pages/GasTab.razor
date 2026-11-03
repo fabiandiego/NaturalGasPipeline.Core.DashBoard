@@ -109,13 +109,13 @@
             <div class="grid cols-even">
                 <Card Title="Z(P) isotherm, every model" Flush="true">
                     <Sheet Code="G-01" Title="Z vs pressure">
-                        <Chart Series="@ZSeries(a.ZCurves)" XLabel="Pressure P [MPa(a)]" YLabel="Z [–]" XMin="0" H="340"
+                        <Chart Series="@ZSeries(a.ZCurves)" XLabel="Pressure P [MPa(a)]" YLabel="Z [–]" XMin="0" W="460" H="340"
                                Points="@(new[] { new ChartPoint(S.GasPressureMPa, a.Z, "state", Palette.Navy) })" />
                     </Sheet>
                 </Card>
                 <Card Title="Deviation from AGA8-DC92" Flush="true">
                     <Sheet Code="G-02" Title="(Z − Z_AGA8) / Z_AGA8">
-                        <Chart Series="@ZSeries(a.DeviationCurves, 1)" XLabel="Pressure P [MPa(a)]" YLabel="Deviation [%]" XMin="0" H="340"
+                        <Chart Series="@ZSeries(a.DeviationCurves)" XLabel="Pressure P [MPa(a)]" YLabel="Deviation [%] (ideal gas omitted)" XMin="0" W="460" H="340"
                                HLines="@(new[] { new ChartHLine(5, "+5 % (Papay acceptance vs DAK)", Palette.Red), new ChartHLine(-5, "−5 %", Palette.Red) })" />
                     </Sheet>
                 </Card>
@@ -194,13 +194,16 @@
         S.NotifyGasChanged();
     }
 
-    private static IReadOnlyList<ChartSeries> ZSeries(IReadOnlyList<Series> curves, int paletteOffset = 0) =>
-        curves.Select((c, i) => new ChartSeries(
-            c.Name,
-            c.Points,
-            Palette.At(i + paletteOffset),
-            Dashed: i >= 9,
-            Width: c.Name.StartsWith("AGA8") ? 3 : 1.6)).ToList();
+    /// <summary>Colour by model name, so a model keeps its colour in both charts.</summary>
+    private IReadOnlyList<ChartSeries> ZSeries(IReadOnlyList<Series> curves)
+    {
+        var order = _a?.ZCurves.Select(c => c.Name).ToList() ?? new List<string>();
+        return curves.Select(c =>
+        {
+            int i = Math.Max(0, order.IndexOf(c.Name));
+            return new ChartSeries(c.Name, c.Points, Palette.At(i), Dashed: i >= 9, Width: c.Name.StartsWith("AGA8") ? 3 : 1.6);
+        }).ToList();
+    }
 
     private IReadOnlyList<FlowChain.Node> GasFlow(GasAnalysis a) => new FlowChain.Node[]
     {
