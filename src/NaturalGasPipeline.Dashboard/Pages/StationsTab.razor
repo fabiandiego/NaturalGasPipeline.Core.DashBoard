@@ -1,0 +1,316 @@
+@inject AppState S
+
+<div class="page-head">
+    <h1>Q3 · Compressor station planning</h1>
+    <p>Stations placed on a surveyed terrain profile by the engine's <code>CompressorStationPlanner</code>: marching along the route from A or back from B, with the pressure criteria below. Station power is isentropic (η = 1), the minimum any machine needs.</p>
+</div>
+
+<div class="grid cols-2">
+    <div class="stack">
+        <Card Title="Case">
+            <div class="field">
+                <label>Example case (engine regression set)</label>
+                <select @onchange="LoadCase">
+                    @foreach (var c in Presets.Cases)
+                    {
+                        <option value="@c.Id" selected="@(c.Id == S.CaseId)">@c.Title</option>
+                    }
+                    <option value="custom" selected="@(S.CaseId == "custom")">Custom route</option>
+                </select>
+            </div>
+            @if (Presets.Cases.FirstOrDefault(c => c.Id == S.CaseId) is { } cs)
+            {
+                <p class="small muted" style="margin:8px 0 0">Expected: @cs.ExpectedStations. Gas composition loaded into the Gas tab.</p>
+            }
+        </Card>
+
+        <Card Title="Design basis">
+            <div class="form">
+                <NumField Label="Standard flow Q" Unit="MMm³/d" @bind-Value="I.FlowMMm3PerDay" />
+                <NumField Label="Flowing temperature" Unit="°C" @bind-Value="I.FlowingTemperatureC" />
+                <NumField Label="Inlet pressure at A" Unit="MPa(a)" @bind-Value="I.InletPressureMPa" />
+                <NumField Label="Delivery pressure at B" Unit="MPa(a)" @bind-Value="I.DeliveryPressureMPa" />
+                <OptField Label="Station discharge" Unit="MPa(a)" Placeholder="= inlet" @bind-Value="I.StationDischargeMPa" />
+                <OptField Label="Minimum suction" Unit="MPa(a)" Placeholder="= delivery" @bind-Value="I.MinimumSuctionMPa" />
+                <OptField Label="MAOP" Unit="MPa(a)" Placeholder="not checked" @bind-Value="I.MaopMPa" />
+                <OptField Label="Velocity limit" Unit="m/s" Placeholder="not checked" @bind-Value="I.MaximumVelocityMs" />
+                <NumField Label="Internal diameter" Unit="mm" @bind-Value="I.InternalDiameterMm" />
+                <NumField Label="Roughness ε" Unit="mm" @bind-Value="I.RoughnessMm" />
+                <NumField Label="Heat-capacity ratio k" @bind-Value="I.HeatCapacityRatio" />
+                <NumField Label="Marching step" Unit="km" @bind-Value="I.StepKm" />
+                <div class="section-label">Method and models</div>
+                <EnumField TEnum="PlacementChoice" Class="full" Label="Placement" Values="Placements" Display="PlacementLabel" @bind-Value="I.Placement" />
+                @if (I.Placement == PlacementChoice.EqualRatio)
+                {
+                    <IntField Label="Number of stations N" Min="0" Max="40" @bind-Value="I.StationCount" />
+                }
+                <IntField Label="Extra counts in comparison" Min="0" Max="8" @bind-Value="I.AdditionalStations" />
+                <EnumField TEnum="CompressibilityModelType" Class="full" Label="Z model" Values="EngineCatalog.CompressibilityModels" @bind-Value="I.ZModel" />
+                <EnumField TEnum="FrictionFactorModelType" Class="full" Label="Friction factor" Values="EngineCatalog.FrictionModels" @bind-Value="I.Friction.Type" />
+            </div>
+            <div class="actions" style="margin-top:14px">
+                <button class="btn" disabled="@_busy" @onclick="Run">Calculate</button>
+                @if (_busy) { <span class="busy">engine running…</span> }
+            </div>
+        </Card>
+
+        <Card Title="Route profile" Flush="true">
+            <Aside>@I.Route.Count points</Aside>
+            <ChildContent>
+                <div class="table-wrap" style="max-height:340px;overflow-y:auto">
+                    <table class="data">
+                        <thead><tr><th class="num">Chainage [km]</th><th class="num">Elevation [m]</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var p in I.Route)
+                            {
+                                <tr>
+                                    <td class="num"><input value="@p.ChainageKm.ToString("0.###", CultureInfo.InvariantCulture)" @onchange="e => SetKm(p, e)" inputmode="decimal" /></td>
+                                    <td class="num"><input value="@p.ElevationM.ToString("0.#", CultureInfo.InvariantCulture)" @onchange="e => SetM(p, e)" inputmode="decimal" /></td>
+                                    <td><button class="btn ghost sm" title="Remove point" @onclick="() => Remove(p)">×</button></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="actions" style="padding:10px 14px">
+                    <button class="btn ghost sm" @onclick="AddPoint">Add point</button>
+                    <span class="small muted">Chainage is measured along the pipe; points are sorted before the run.</span>
+                </div>
+            </ChildContent>
+        </Card>
+    </div>
+
+    <div class="stack">
+        @if (_error is not null)
+        {
+            <div class="error-box">@_error</div>
+        }
+        @if (_a is not null)
+        {
+            var a = _a;
+            <section class="card">
+                <div class="kpis">
+                    <div class="kpi hl"><div class="k">Intermediate stations</div><div class="v">@a.Stations.Count</div></div>
+                    <div class="kpi"><div class="k">Isentropic power, total</div><div class="v">@Fmt.N(a.TotalPowerMW, 2)<small>MW</small></div></div>
+                    <div class="kpi"><div class="k">Delivery at B</div><div class="v">@Fmt.N(a.DeliveryMPa, 3)<small>MPa(a)</small></div></div>
+                    <div class="kpi"><div class="k">Route length</div><div class="v">@Fmt.N(a.RouteLengthKm, 1)<small>km</small></div></div>
+                    <div class="kpi"><div class="k">Mass flow</div><div class="v">@Fmt.N(a.MassFlowKgS, 1)<small>kg/s</small></div></div>
+                    <div class="kpi"><div class="k">Engine time</div><div class="v">@Fmt.N(a.ElapsedMs / 1000.0, 2)<small>s</small></div></div>
+                </div>
+            </section>
+
+            <Card Title="Calculation flow" Flush="true">
+                <Aside>@a.Method · @a.SegmentModel</Aside>
+                <ChildContent>
+                    <FlowChain Nodes="@Flow(a)" />
+                </ChildContent>
+            </Card>
+
+            <Card Title="Line diagram" Flush="true">
+                <Sheet Code="P-01" Title="Station layout A → B">
+                    <svg viewBox="0 0 900 150" role="img" aria-label="Station layout">
+                        @{
+                            double len = Math.Max(1e-6, a.RouteLengthKm);
+                            double X(double km) => 50 + km / len * 800;
+                        }
+                        <line x1="50" y1="70" x2="850" y2="70" stroke="#063a6e" stroke-width="8" />
+                        <line x1="50" y1="70" x2="850" y2="70" stroke="#7fb2e5" stroke-width="3" />
+                        <g>
+                            <rect x="34" y="54" width="32" height="32" fill="#063a6e" /><text x="50" y="75" text-anchor="middle" fill="#fff" font-weight="700" font-size="14">A</text>
+                            <text x="50" y="110" text-anchor="middle" font-size="11" font-family="PT Mono, monospace" fill="#3d4a5a">@Fmt.N(a.PressureProfile[0].MPa, 2) MPa</text>
+                            <rect x="834" y="54" width="32" height="32" fill="#063a6e" /><text x="850" y="75" text-anchor="middle" fill="#fff" font-weight="700" font-size="14">B</text>
+                            <text x="850" y="110" text-anchor="middle" font-size="11" font-family="PT Mono, monospace" fill="#3d4a5a">@Fmt.N(a.DeliveryMPa, 2) MPa</text>
+                        </g>
+                        @foreach (var st in a.Stations)
+                        {
+                            double x = X(st.ChainageKm);
+                            <g>
+                                <polygon points="@($"{Fmt.S(x - 16)},86 {Fmt.S(x - 16)},54 {Fmt.S(x + 16)},62 {Fmt.S(x + 16)},78")" fill="#0a5ba8" stroke="#fff" stroke-width="2" />
+                                <text x="@Fmt.S(x)" y="44" text-anchor="middle" font-size="12" font-weight="700" fill="#063a6e">@st.Name</text>
+                                <text x="@Fmt.S(x)" y="104" text-anchor="middle" font-size="11" font-family="PT Mono, monospace" fill="#3d4a5a">km @Fmt.N(st.ChainageKm, 0)</text>
+                                <text x="@Fmt.S(x)" y="118" text-anchor="middle" font-size="11" font-family="PT Mono, monospace" fill="#3d4a5a">r @Fmt.N(st.Ratio, 3)</text>
+                                <text x="@Fmt.S(x)" y="132" text-anchor="middle" font-size="11" font-family="PT Mono, monospace" fill="#0a5ba8">@Fmt.N(st.IsentropicPowerMW, 1) MW</text>
+                            </g>
+                        }
+                        @if (a.Stations.Count == 0)
+                        {
+                            <g><text x="450" y="44" text-anchor="middle" font-size="13" fill="#2f8f4e" font-weight="700">No intermediate compression needed: A's pressure reaches B above the delivery target.</text></g>
+                        }
+                    </svg>
+                </Sheet>
+            </Card>
+
+            <Card Title="Hydraulic gradient" Flush="true">
+                <Sheet Code="P-02" Title="Pressure along the route">
+                    <Chart Series="@(new[] { new ChartSeries("Pressure", a.PressureProfile, Palette.Blue, Width: 2.4) })"
+                           XLabel="Chainage [km]" YLabel="Pressure [MPa(a)]" XMin="0" XMax="@a.RouteLengthKm" H="320" ShowLegend="false"
+                           VLines="@StationLines(a)" HLines="@PressureLines(a)" />
+                </Sheet>
+                <Sheet Code="P-03" Title="Terrain profile">
+                    <Chart Series="@(new[] { new ChartSeries("Elevation", a.Terrain, Palette.Earth, Width: 2, Area: true) })"
+                           XLabel="Chainage [km]" YLabel="Elevation [m]" XMin="0" XMax="@a.RouteLengthKm" H="220" ShowLegend="false"
+                           VLines="@StationLines(a)" />
+                </Sheet>
+            </Card>
+
+            <Card Title="Stations" Flush="true">
+                <div class="table-wrap">
+                    <table class="data">
+                        <thead><tr><th>Station</th><th class="num">km</th><th class="num">z [m]</th><th class="num">spacing [km]</th><th class="num">Ps [MPa]</th><th class="num">Pd [MPa]</th><th class="num">r</th><th class="num">Td,s [°C]</th><th class="num">head [kJ/kg]</th><th class="num">P_s [MW]</th></tr></thead>
+                        <tbody>
+                            @foreach (var st in a.Stations)
+                            {
+                                <tr><td>@st.Name</td><td class="num">@Fmt.N(st.ChainageKm, 1)</td><td class="num">@Fmt.N(st.ElevationM, 0)</td><td class="num">@Fmt.N(st.SpacingKm, 1)</td><td class="num">@Fmt.N(st.SuctionMPa, 3)</td><td class="num">@Fmt.N(st.DischargeMPa, 3)</td><td class="num">@Fmt.N(st.Ratio, 3)</td><td class="num">@Fmt.N(st.IsentropicDischargeC, 1)</td><td class="num">@Fmt.N(st.HeadKJkg, 1)</td><td class="num">@Fmt.N(st.IsentropicPowerMW, 2)</td></tr>
+                            }
+                            @if (a.Stations.Count == 0) { <tr><td colspan="10" class="muted">No intermediate station.</td></tr> }
+                        </tbody>
+                    </table>
+                </div>
+            </Card>
+
+            <Card Title="Sections" Flush="true">
+                <div class="table-wrap">
+                    <table class="data">
+                        <thead><tr><th>Section</th><th class="num">km</th><th class="num">P in → out [MPa]</th><th class="num">ΔP friction [kPa]</th><th class="num">ΔP elevation [kPa]</th><th class="num">V max [m/s]</th><th class="num">V / V_e</th></tr></thead>
+                        <tbody>
+                            @foreach (var sec in a.Sections)
+                            {
+                                <tr><td>@sec.Name</td><td class="num">@Fmt.N(sec.StartKm, 0)–@Fmt.N(sec.EndKm, 0)</td><td class="num">@Fmt.N(sec.InletMPa, 3) → @Fmt.N(sec.OutletMPa, 3)</td><td class="num">@Fmt.N(sec.FrictionDropKPa, 0)</td><td class="num">@Fmt.N(sec.ElevationDropKPa, 0)</td><td class="num">@Fmt.N(sec.MaxVelocityMs, 2)</td><td class="num">@Fmt.N(sec.MaxErosionalRatio, 2)</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </Card>
+
+            @if (a.Comparison.Count > 0)
+            {
+                <Card Title="Number of stations vs power" Flush="true">
+                    <Aside>equal ratios at each count (method 2)</Aside>
+                    <ChildContent>
+                        <div class="grid cols-even" style="gap:0">
+                            <Sheet Code="P-04" Title="Total isentropic power">
+                                <Chart Series="@(new[] { new ChartSeries("Power", a.Comparison.Where(c => c.PowerMW is not null).Select(c => ((double)c.Stations, c.PowerMW!.Value)).ToList(), Palette.Blue, Width: 2, Markers: true) })"
+                                       XLabel="Intermediate stations N" YLabel="Power [MW]" H="260" ShowLegend="false" />
+                            </Sheet>
+                            <div class="table-wrap" style="padding:10px">
+                                <table class="data">
+                                    <thead><tr><th class="num">N</th><th class="num">r</th><th class="num">P [MW]</th><th class="num">P_B [MPa]</th><th></th></tr></thead>
+                                    <tbody>
+                                        @foreach (var c in a.Comparison)
+                                        {
+                                            <tr class="@(c.Stations == a.Stations.Count ? "sel" : "")">
+                                                <td class="num">@c.Stations</td><td class="num">@Fmt.N(c.Ratio, 3)</td><td class="num">@Fmt.N(c.PowerMW, 2)</td><td class="num">@Fmt.N(c.DeliveryMPa, 3)</td>
+                                                <td>@if (c.Feasible) { <span class="tag ok">feasible</span> } else { <span class="tag warn" title="@c.Reason">infeasible</span> }</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </ChildContent>
+                </Card>
+            }
+
+            <Card Title="Warnings" Flush="true">
+                <Notes Items="a.Warnings" Empty="No warnings from the engine." />
+            </Card>
+        }
+        else if (!_busy && _error is null)
+        {
+            <div class="card"><div class="card-b muted">Press <b>Calculate</b> to run the planner.</div></div>
+        }
+    </div>
+</div>
+
+@code {
+    private PlannerInput I => S.Planner;
+    private PlanAnalysis? _a { get => S.LastPlan; set => S.LastPlan = value; }
+    private string? _error;
+    private bool _busy;
+
+    private static readonly IReadOnlyList<PlacementChoice> Placements =
+        Enum.GetValues(typeof(PlacementChoice)).Cast<PlacementChoice>().ToArray();
+
+    private static string PlacementLabel(PlacementChoice p) => p switch
+    {
+        PlacementChoice.Automatic => "Automatic (minimum N, equal ratios)",
+        PlacementChoice.MaximumSpacing => "Method 1 · maximum spacing",
+        _ => "Method 2 · equal ratios, given N"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (_a is null)
+        {
+            await Run();
+        }
+    }
+
+    private async Task Run()
+    {
+        _busy = true;
+        _error = null;
+        StateHasChanged();
+        await Task.Delay(30); // let the browser paint the busy state before the engine blocks the thread
+        try
+        {
+            _a = PlannerService.Analyze(S.Gas, I);
+        }
+        catch (Exception ex)
+        {
+            _a = null;
+            _error = ex.Message;
+        }
+        _busy = false;
+    }
+
+    private async Task LoadCase(ChangeEventArgs e)
+    {
+        string id = e.Value?.ToString() ?? "";
+        S.CaseId = id;
+        if (Presets.Cases.FirstOrDefault(c => c.Id == id) is { } c)
+        {
+            Presets.Apply(c, I, S.Gas);
+            S.NotifyGasChanged();
+            await Run();
+        }
+    }
+
+    private static double? Parse(ChangeEventArgs e) =>
+        double.TryParse((e.Value?.ToString() ?? "").Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double v) && double.IsFinite(v) ? v : null;
+
+    private void SetKm(RoutePoint p, ChangeEventArgs e) { if (Parse(e) is double v) { p.ChainageKm = v; S.CaseId = "custom"; } }
+
+    private void SetM(RoutePoint p, ChangeEventArgs e) { if (Parse(e) is double v) { p.ElevationM = v; S.CaseId = "custom"; } }
+
+    private void Remove(RoutePoint p) { if (I.Route.Count > 2) { I.Route.Remove(p); S.CaseId = "custom"; } }
+
+    private void AddPoint()
+    {
+        RoutePoint last = I.Route.OrderBy(r => r.ChainageKm).LastOrDefault() ?? new RoutePoint();
+        I.Route.Add(new RoutePoint { ChainageKm = last.ChainageKm + 50, ElevationM = last.ElevationM });
+        S.CaseId = "custom";
+    }
+
+    private static IReadOnlyList<ChartVLine> StationLines(PlanAnalysis a) =>
+        a.Stations.Select(s => new ChartVLine(s.ChainageKm, s.Name, Palette.Navy)).ToList();
+
+    private IReadOnlyList<ChartHLine> PressureLines(PlanAnalysis a)
+    {
+        var lines = new List<ChartHLine> { new(a.DeliveryTargetMPa, $"delivery target {Fmt.N(a.DeliveryTargetMPa, 2)} MPa", Palette.Teal) };
+        if (I.MaopMPa is double maop) lines.Add(new(maop, $"MAOP {Fmt.N(maop, 2)} MPa", Palette.Red));
+        if (I.MinimumSuctionMPa is double ms) lines.Add(new(ms, $"min suction {Fmt.N(ms, 2)} MPa", Palette.Flame));
+        return lines;
+    }
+
+    private IReadOnlyList<FlowChain.Node> Flow(PlanAnalysis a) => new FlowChain.Node[]
+    {
+        new("Route", "chainage, elevation → uniform-slope steps", $"{I.Route.Count} points · step {Fmt.N(I.StepKm, 2)} km"),
+        new("Gas & flow", "ṁ from Q_std (explicit Z_std)", $"{Fmt.N(a.MassFlowKgS, 1)} kg/s"),
+        new("March", "segment model, A → B or B → A", "stop where P = P_suction,min (Brent)"),
+        new("Station", "compress to P_discharge, cool to T_flowing", $"N = {a.Stations.Count}"),
+        new("Method", I.Placement == PlacementChoice.MaximumSpacing ? "max spacing (method 1)" : "equal ratios (method 2)", a.Stations.Count > 0 ? $"r = {Fmt.N(a.Stations[0].Ratio, 3)}" : "r —"),
+        new("Power", "isentropic, Z_avg, k", $"{Fmt.N(a.TotalPowerMW, 2)} MW"),
+        new("Delivery", "P_B ≥ target", $"{Fmt.N(a.DeliveryMPa, 3)} MPa", true)
+    };
+}

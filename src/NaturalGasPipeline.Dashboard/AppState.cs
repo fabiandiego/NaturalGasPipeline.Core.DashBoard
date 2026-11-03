@@ -10,6 +10,11 @@ public sealed class AppState
 {
     public AppState()
     {
+        // One set of standard conditions for every tab.
+        Segment.Standard = Standard;
+        Planner.Standard = Standard;
+        Compressor.Standard = Standard;
+
         Presets.ExampleCase r3 = Presets.Cases.Single(c => c.Id == "R3");
         Presets.Apply(r3, Planner, Gas);
         CaseId = r3.Id;
@@ -35,6 +40,9 @@ public sealed class AppState
     public CompressorInput Compressor { get; } = new();
 
     public MechanicsInput Mechanics { get; } = new();
+
+    /// <summary>Last planner result, kept across tab switches (the planner is the slow calculation).</summary>
+    public PlanAnalysis? LastPlan { get; set; }
 
     /// <summary>Raised when the gas changes, so tabs can recalculate.</summary>
     public event Action? GasChanged;

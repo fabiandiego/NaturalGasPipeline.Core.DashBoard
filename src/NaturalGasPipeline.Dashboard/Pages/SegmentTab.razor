@@ -1,0 +1,215 @@
+@inject AppState S
+
+<div class="page-head">
+    <h1>Q2 · Pipe segment A → B</h1>
+    <p>Steady isothermal flow in one pipe with uniform slope (engine: <code>IsothermalGasFlowSolver</code>, General Flow Equation in SI with Darcy friction). The classic flow equations of the Correlations module are run on the same pipe for comparison.</p>
+</div>
+
+<div class="grid cols-2">
+    <div class="stack">
+        <Card Title="Inputs">
+            <div class="form">
+                <EnumField TEnum="SegmentSolveMode" Class="full" Label="Solve for" Values="Modes" Display="ModeLabel" @bind-Value="I.Mode" @bind-Value:after="Recalc" />
+                <NumField Label="Inlet pressure P1" Unit="MPa(a)" @bind-Value="I.InletPressureMPa" @bind-Value:after="Recalc" />
+                @if (I.Mode != SegmentSolveMode.OutletPressure)
+                {
+                    <NumField Label="Outlet pressure P2" Unit="MPa(a)" @bind-Value="I.OutletPressureMPa" @bind-Value:after="Recalc" />
+                }
+                @if (I.Mode != SegmentSolveMode.FlowRate)
+                {
+                    <NumField Label="Standard flow Q" Unit="MMm³/d" @bind-Value="I.FlowMMm3PerDay" @bind-Value:after="Recalc" />
+                }
+                @if (I.Mode != SegmentSolveMode.InternalDiameter)
+                {
+                    <NumField Label="Internal diameter D" Unit="mm" @bind-Value="I.InternalDiameterMm" @bind-Value:after="Recalc" />
+                }
+                <NumField Label="Length L" Unit="km" @bind-Value="I.LengthKm" @bind-Value:after="Recalc" />
+                <NumField Label="Elevation change Δz" Unit="m (B − A)" @bind-Value="I.ElevationChangeM" @bind-Value:after="Recalc" />
+                <NumField Label="Roughness ε" Unit="mm" @bind-Value="I.RoughnessMm" @bind-Value:after="Recalc" />
+                <NumField Label="Flowing temperature" Unit="°C" @bind-Value="I.FlowingTemperatureC" @bind-Value:after="Recalc" />
+                <div class="section-label">Models</div>
+                <EnumField TEnum="CompressibilityModelType" Class="full" Label="Z model" Values="EngineCatalog.CompressibilityModels" @bind-Value="I.ZModel" @bind-Value:after="Recalc" />
+                <EnumField TEnum="FrictionFactorModelType" Class="full" Label="Friction factor" Values="EngineCatalog.FrictionModels" @bind-Value="I.Friction.Type" @bind-Value:after="Recalc" />
+                <label class="check full"><input type="checkbox" checked="@I.Friction.UseAgaDragFactor" @onchange="ToggleAga" /> use AGA transmission factor with drag factor Df instead</label>
+                @if (I.Friction.UseAgaDragFactor)
+                {
+                    <NumField Label="Drag factor Df" @bind-Value="I.Friction.DragFactor" @bind-Value:after="Recalc" />
+                }
+                <NumField Label="Efficiency E (Weymouth, Panhandle)" @bind-Value="I.PipelineEfficiency" @bind-Value:after="Recalc" />
+                <p class="small muted full" style="margin:0">Gas: composition from the Gas tab. Standard conditions @Fmt.N(S.Standard.TemperatureC, 2) °C, @Fmt.N(S.Standard.PressureKPa, 3) kPa.</p>
+            </div>
+        </Card>
+    </div>
+
+    <div class="stack">
+        @if (_error is not null)
+        {
+            <div class="error-box">@_error</div>
+        }
+        @if (_a is not null)
+        {
+            var a = _a;
+            <section class="card">
+                <div class="kpis">
+                    <div class="kpi @(a.Mode == SegmentSolveMode.OutletPressure ? "hl" : "")"><div class="k">Outlet pressure P2</div><div class="v">@Fmt.N(a.OutletPressureMPa, 4)<small>MPa(a)</small></div></div>
+                    <div class="kpi @(a.Mode == SegmentSolveMode.FlowRate ? "hl" : "")"><div class="k">Standard flow Q</div><div class="v">@Fmt.N(a.FlowMMm3PerDay, 3)<small>MMm³/d</small></div></div>
+                    <div class="kpi @(a.Mode == SegmentSolveMode.InternalDiameter ? "hl" : "")"><div class="k">Internal diameter D</div><div class="v">@Fmt.N(a.InternalDiameterMm, 1)<small>mm</small></div></div>
+                    <div class="kpi"><div class="k">Pressure drop</div><div class="v">@Fmt.N((a.InletPressureMPa - a.OutletPressureMPa) * 1000, 0)<small>kPa</small></div></div>
+                    <div class="kpi"><div class="k">Drop per km</div><div class="v">@Fmt.N((a.InletPressureMPa - a.OutletPressureMPa) * 1000 / a.LengthKm, 2)<small>kPa/km</small></div></div>
+                    <div class="kpi"><div class="k">Max velocity</div><div class="v">@Fmt.N(Math.Max(a.InletVelocityMs, a.OutletVelocityMs), 2)<small>m/s</small></div></div>
+                </div>
+            </section>
+
+            <Card Title="Calculation flow" Flush="true">
+                <Aside>@a.ZModel · @a.FrictionModel · @a.Iterations iterations</Aside>
+                <ChildContent>
+                    <FlowChain Nodes="@Flow(a)" />
+                    <p class="small muted" style="margin:0 14px 12px">
+                        P1² − e<sup>s</sup>·P2² = f·G²·a·L/D·(e<sup>s</sup> − 1)/s, with G = ṁ/A, a = Z·R·T/M, s = 2·g·Δz/a;
+                        Z, μ, Re and f at P_avg = ⅔(P1 + P2 − P1·P2/(P1 + P2)). Kinetic-energy term neglected.
+                    </p>
+                </ChildContent>
+            </Card>
+
+            <Card Title="Schematic" Flush="true">
+                <Sheet Code="S-01" Title="Pipe segment A → B">
+                    <svg viewBox="0 0 900 260" role="img" aria-label="Pipe segment schematic">
+                        @{
+                            double rise = Math.Clamp(a.ElevationChangeM / Math.Max(1, Math.Abs(a.ElevationChangeM)) * Math.Min(60, 15 + Math.Abs(a.ElevationChangeM) / 20), -60, 60);
+                            double yA = 120, yB = 120 - rise;
+                            double fr = Math.Max(0, a.FrictionDropKPa), el = a.ElevationDropKPa;
+                            double tot = Math.Max(1e-9, Math.Abs(fr) + Math.Abs(el));
+                            double wf = 600 * Math.Abs(fr) / tot, we = 600 * Math.Abs(el) / tot;
+                        }
+                        <defs>
+                            <marker id="fl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0 0L10 5L0 10z" fill="#e8a317" /></marker>
+                        </defs>
+                        <line x1="150" y1="@Fmt.S(yA)" x2="750" y2="@Fmt.S(yB)" stroke="#063a6e" stroke-width="22" stroke-linecap="butt" />
+                        <line x1="150" y1="@Fmt.S(yA)" x2="750" y2="@Fmt.S(yB)" stroke="#e3eef9" stroke-width="16" />
+                        <line x1="230" y1="@Fmt.S(yA - rise * 80 / 600)" x2="650" y2="@Fmt.S(yB + rise * 100 / 600)" stroke="#e8a317" stroke-width="3" marker-end="url(#fl)" />
+                        <g>
+                            <circle cx="150" cy="@Fmt.S(yA)" r="20" fill="#0a5ba8" /><text x="150" y="@Fmt.S(yA + 5)" text-anchor="middle" fill="#fff" font-weight="700" font-size="15">A</text>
+                            <circle cx="750" cy="@Fmt.S(yB)" r="20" fill="#0a5ba8" /><text x="750" y="@Fmt.S(yB + 5)" text-anchor="middle" fill="#fff" font-weight="700" font-size="15">B</text>
+                            <text x="150" y="@Fmt.S(yA - 34)" text-anchor="middle" font-size="13" font-family="PT Mono, monospace" fill="#063a6e">P1 = @Fmt.N(a.InletPressureMPa, 3) MPa</text>
+                            <text x="750" y="@Fmt.S(yB - 34)" text-anchor="middle" font-size="13" font-family="PT Mono, monospace" fill="#063a6e">P2 = @Fmt.N(a.OutletPressureMPa, 3) MPa</text>
+                            <text x="450" y="@Fmt.S((yA + yB) / 2 - 24)" text-anchor="middle" font-size="12" fill="#3d4a5a">L = @Fmt.N(a.LengthKm, 1) km · D = @Fmt.N(a.InternalDiameterMm, 1) mm · ε/D = @Fmt.E(a.RelativeRoughness, 2)</text>
+                            <text x="450" y="@Fmt.S((yA + yB) / 2 + 36)" text-anchor="middle" font-size="12" fill="#3d4a5a">Q = @Fmt.N(a.FlowMMm3PerDay, 2) MMm³/d · ṁ = @Fmt.N(a.MassFlowKgS, 1) kg/s · Δz = @Fmt.N(a.ElevationChangeM, 0) m</text>
+                            <text x="150" y="215" font-size="12" font-weight="700" fill="#063a6e">ΔP split</text>
+                            <rect x="150" y="222" width="@Fmt.S(wf)" height="14" fill="#0a5ba8" />
+                            <rect x="@Fmt.S(150 + wf)" y="222" width="@Fmt.S(we)" height="14" fill="@(el >= 0 ? "#e8a317" : "#00908c")" />
+                            <text x="230" y="215" font-size="12" fill="#3d4a5a">friction @Fmt.N(fr, 0) kPa · elevation @Fmt.N(el, 0) kPa @(el < 0 ? "(recovered downhill)" : "")</text>
+                        </g>
+                    </svg>
+                </Sheet>
+            </Card>
+
+            <div class="grid cols-even">
+                <Card Title="Pressure along the pipe" Flush="true">
+                    <Sheet Code="S-02" Title="P(x), @I.ProfileParts sub-segments">
+                        <Chart Series="@(new[] { new ChartSeries("P(x)", a.Profile.Select(p => (p.Km, p.MPa)).ToList(), Palette.Blue, Width: 2.5, Area: true, InLegend: false) })"
+                               XLabel="Chainage [km]" YLabel="Pressure [MPa(a)]" XMin="0" H="300" />
+                    </Sheet>
+                </Card>
+                <Card Title="Moody diagram" Flush="true">
+                    <Sheet Code="S-03" Title="@a.FrictionModel">
+                        <Chart Series="@MoodySeries(a)" LogX="true" LogY="true" XMin="1000" XMax="1e8" YMin="0.006" YMax="0.1"
+                               XLabel="Reynolds number Re [–]" YLabel="Darcy f [–]" H="300"
+                               Points="@(new[] { new ChartPoint(a.ReynoldsNumber, a.DarcyFrictionFactor, "operating point", Palette.Red) })" />
+                    </Sheet>
+                </Card>
+            </div>
+
+            <Card Title="Same pipe, every flow equation" Flush="true">
+                <Aside>Q fixed at @Fmt.N(a.FlowMMm3PerDay, 3) MMm³/d · Δ against the SI solver</Aside>
+                <ChildContent>
+                    <div class="table-wrap">
+                        <table class="data">
+                            <thead><tr><th>Equation</th><th class="num">P2 [MPa(a)]</th><th class="num">Δ P2</th><th class="num">F</th><th class="num">Re</th><th>Notes</th></tr></thead>
+                            <tbody>
+                                <tr class="sel"><td>SI isothermal solver (@a.FrictionModel)</td><td class="num">@Fmt.N(a.OutletPressureMPa, 4)</td><td class="num">—</td><td class="num">@Fmt.N(a.TransmissionFactor, 2)</td><td class="num">@Fmt.E(a.ReynoldsNumber)</td><td class="muted">reference</td></tr>
+                                @foreach (var e in a.Equations)
+                                {
+                                    <tr>
+                                        <td>@e.Equation</td>
+                                        <td class="num">@Fmt.N(e.OutletPressureMPa, 4)</td>
+                                        <td class="num">@(e.DifferencePercent is double d ? (d >= 0 ? "+" : "") + Fmt.N(d, 2) + " %" : "")</td>
+                                        <td class="num">@Fmt.N(e.TransmissionFactor, 2)</td>
+                                        <td class="num">@(e.ReynoldsNumber is double re ? Fmt.E(re) : "—")</td>
+                                        <td class="small">@(e.Error ?? string.Join(" ", e.Warnings))</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </ChildContent>
+            </Card>
+
+            <Card Title="Average state and checks" Flush="true">
+                <table class="data">
+                    <tbody>
+                        <tr><td>Average pressure P_avg</td><td class="num">@Fmt.N(a.AveragePressureMPa, 4) MPa(a)</td><td>Average Z</td><td class="num">@Fmt.N(a.AverageZ, 5)</td></tr>
+                        <tr><td>Average density</td><td class="num">@Fmt.N(a.AverageDensityKgM3, 2) kg/m³</td><td>Average viscosity</td><td class="num">@Fmt.N(a.AverageViscosityMicroPaS, 3) µPa·s</td></tr>
+                        <tr><td>Velocity inlet / outlet</td><td class="num">@Fmt.N(a.InletVelocityMs, 2) / @Fmt.N(a.OutletVelocityMs, 2) m/s</td><td>Erosional (API RP 14E, C = 100)</td><td class="num">@Fmt.N(a.ErosionalVelocityMs, 1) m/s</td></tr>
+                        <tr><td>Elevation parameter s</td><td class="num">@Fmt.E(a.ElevationParameter)</td><td>Z at standard conditions</td><td class="num">@Fmt.N(a.ZStandard, 6)</td></tr>
+                    </tbody>
+                </table>
+                <Notes Items="a.Warnings" Empty="No warnings from the engine." />
+            </Card>
+        }
+    </div>
+</div>
+
+@code {
+    private SegmentInput I => S.Segment;
+    private SegmentAnalysis? _a;
+    private string? _error;
+
+    private static readonly IReadOnlyList<SegmentSolveMode> Modes =
+        Enum.GetValues(typeof(SegmentSolveMode)).Cast<SegmentSolveMode>().ToArray();
+
+    private static string ModeLabel(SegmentSolveMode m) => m switch
+    {
+        SegmentSolveMode.OutletPressure => "Outlet pressure P2 (given P1, Q)",
+        SegmentSolveMode.FlowRate => "Flow capacity Q (given P1, P2)",
+        _ => "Internal diameter D (given P1, P2, Q)"
+    };
+
+    protected override void OnInitialized() => Recalc();
+
+    private void ToggleAga(ChangeEventArgs e)
+    {
+        I.Friction.UseAgaDragFactor = e.Value is bool b && b;
+        Recalc();
+    }
+
+    private void Recalc()
+    {
+        try
+        {
+            _a = SegmentService.Analyze(S.Gas, I);
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private static IReadOnlyList<ChartSeries> MoodySeries(SegmentAnalysis a) =>
+        a.MoodyCurves.Select((c, i) => new ChartSeries(
+            c.Name, c.Points,
+            c.Name.Contains("this pipe") ? Palette.Blue : c.Name.StartsWith("Laminar") ? Palette.Flame : Palette.Steel,
+            Width: c.Name.Contains("this pipe") ? 2.5 : 1.0,
+            InLegend: c.Name.Contains("this pipe") || c.Name.StartsWith("Laminar"))).ToList();
+
+    private static IReadOnlyList<FlowChain.Node> Flow(SegmentAnalysis a) => new FlowChain.Node[]
+    {
+        new("Standard flow", "Q_std at base conditions", $"{Fmt.N(a.FlowMMm3PerDay, 3)} MMm³/d"),
+        new("Mass flow", "ṁ = Q·P_std·M / (Z_std·R·T_std)", $"{Fmt.N(a.MassFlowKgS, 2)} kg/s"),
+        new("Average state", "P_avg, Z_avg, ρ, μ", $"{Fmt.N(a.AveragePressureMPa, 3)} MPa · Z {Fmt.N(a.AverageZ, 4)}"),
+        new("Reynolds", "Re = 4ṁ / (π·D·μ)", Fmt.E(a.ReynoldsNumber)),
+        new("Friction", $"f({a.FrictionModel}), ε/D = {Fmt.E(a.RelativeRoughness, 2)}", $"f = {Fmt.N(a.DarcyFrictionFactor, 5)}"),
+        new("Elevation", "s = 2·g·Δz / (Z·R·T/M)", $"s = {Fmt.E(a.ElevationParameter, 2)}"),
+        new("Outlet", "P2 = √((P1² − friction term)/eˢ)", $"{Fmt.N(a.OutletPressureMPa, 4)} MPa", true)
+    };
+}

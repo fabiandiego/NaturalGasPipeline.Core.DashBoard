@@ -1,1 +1,108 @@
-<h1>NaturalGasPipeline dashboard</h1>
+@inject HttpClient Http
+
+<header class="topbar">
+    <div class="topbar-inner">
+        <div class="brand">
+            <svg viewBox="0 0 64 64" aria-hidden="true">
+                <circle cx="32" cy="32" r="27" fill="none" stroke="#fff" stroke-width="3.5" />
+                <circle cx="32" cy="32" r="17" fill="none" stroke="#7fb2e5" stroke-width="2" />
+                <path d="M3 32h58" stroke="#fff" stroke-width="5" />
+                <path d="M22 23l8 9-8 9M33 23l8 9-8 9" fill="none" stroke="#e8a317" stroke-width="3" stroke-linejoin="round" />
+            </svg>
+            <div>
+                <div class="brand-title">Gas Transmission Engineering</div>
+                <div class="brand-sub">NaturalGasPipeline.Core · calculation dashboard</div>
+            </div>
+        </div>
+        <div class="engine-chip" title="@VersionTitle">
+            <span class="dot"></span>
+            engine
+            @if (_version?.EngineCommit is { Length: >= 7 } sha)
+            {
+                <a href="https://github.com/fabiandiego/NaturalGasPipeline.Core/commit/@sha" target="_blank" rel="noopener">@sha[..7]</a>
+                <span>@(_version.EngineDate?.Length >= 10 ? _version.EngineDate[..10] : "")</span>
+            }
+            else
+            {
+                <span>local build</span>
+            }
+        </div>
+        <nav class="tabs" role="tablist">
+            @foreach (var t in Tabs)
+            {
+                <button class="tab @(t.Id == _tab ? "active" : "")" role="tab" aria-selected="@(t.Id == _tab)" @onclick="() => _tab = t.Id">
+                    @if (t.Question is not null) { <span class="q">@t.Question</span> }
+                    @t.Title
+                </button>
+            }
+        </nav>
+    </div>
+</header>
+
+<CascadingValue Name="EngineShort" Value="@EngineShort">
+    <main>
+        @switch (_tab)
+        {
+            case "gas":
+                <GasTab />
+                break;
+            case "segment":
+                <SegmentTab />
+                break;
+            case "stations":
+                <StationsTab />
+                break;
+            case "compressor":
+                <CompressorTab />
+                break;
+            case "mechanics":
+                <MechanicsTab />
+                break;
+            default:
+                <OverviewTab Version="_version" OnNavigate="@((string id) => _tab = id)" />
+                break;
+        }
+    </main>
+</CascadingValue>
+
+<footer class="foot">
+    All calculations run in your browser with the engine compiled to WebAssembly; nothing is sent to a server.
+    Pressures are absolute unless marked (g). Engine:
+    <a href="https://github.com/fabiandiego/NaturalGasPipeline.Core" target="_blank" rel="noopener">fabiandiego/NaturalGasPipeline.Core</a> (MIT).
+    Dashboard: <a href="https://github.com/fabiandiego/NaturalGasPipeline.Core.DashBoard" target="_blank" rel="noopener">source</a>.
+</footer>
+
+@code {
+    public sealed record TabDef(string Id, string Title, string? Question);
+
+    public static readonly TabDef[] Tabs =
+    {
+        new("overview", "Overview", null),
+        new("gas", "Gas properties", "Q1"),
+        new("segment", "Pipe segment", "Q2"),
+        new("stations", "Station planning", "Q3"),
+        new("compressor", "Compressor station", "Q4"),
+        new("mechanics", "Wall thickness", null)
+    };
+
+    private string _tab = "overview";
+    private VersionInfo? _version;
+
+    private string EngineShort => _version?.EngineCommit is { Length: >= 7 } s ? s[..7] : "local";
+
+    private string VersionTitle => _version is null
+        ? "Engine built from the submodule in this checkout"
+        : $"{_version.EngineSubject}\nbuilt {_version.BuiltAt}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _version = await Http.GetFromJsonAsync<VersionInfo>("version.json");
+        }
+        catch
+        {
+            _version = null; // local run: version.json is written by CI only
+        }
+    }
+}

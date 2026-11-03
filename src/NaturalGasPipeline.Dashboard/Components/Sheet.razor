@@ -1,0 +1,16 @@
+@* Engineering drawing frame with a title block. *@
+<div class="sheet">
+    <div class="body">@ChildContent</div>
+    <div class="stamp">
+        <span>sheet</span><span>@Code</span>
+        <span>title</span><span>@Title</span>
+        <span>engine</span><span>NGP.Core @Engine</span>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter(Name = "EngineShort")] public string Engine { get; set; } = "";
+    [Parameter] public string Code { get; set; } = "";
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

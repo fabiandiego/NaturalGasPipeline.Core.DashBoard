@@ -242,13 +242,13 @@ public static class GasService
 
         if (wichertAziz is not null)
         {
-            list.Add(("Dranchuk-Abou-Kassem", "Kay + Wichert-Aziz",
+            list.Add(("DAK · Wichert-Aziz", "Kay + Wichert-Aziz",
                 CompressibilityModelFactory.Create(CorrespondingStatesModelType.DranchukAbouKassem, wichertAziz)));
         }
 
         try
         {
-            list.Add(("Dranchuk-Abou-Kassem", "Sutton γ",
+            list.Add(("DAK · Sutton γ", "Sutton pseudo-criticals from γ",
                 CompressibilityModelFactory.CreateFromSpecificGravity(
                     CorrespondingStatesModelType.DranchukAbouKassem, sg, new SuttonPseudoCriticalCorrelation())));
         }

@@ -1,0 +1,29 @@
+@typeparam TEnum where TEnum : struct, Enum
+@* Drop-down over the values the engine exposes (passed in from EngineCatalog). *@
+<div class="field @Class">
+    <label>@Label</label>
+    <select @onchange="OnChange">
+        @foreach (TEnum v in Values)
+        {
+            <option value="@v.ToString()" selected="@(v.Equals(Value))">@(Display?.Invoke(v) ?? EngineCatalog.Label(v))</option>
+        }
+    </select>
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public IReadOnlyList<TEnum> Values { get; set; } = Array.Empty<TEnum>();
+    [Parameter] public Func<TEnum, string>? Display { get; set; }
+    [Parameter] public TEnum Value { get; set; }
+    [Parameter] public EventCallback<TEnum> ValueChanged { get; set; }
+
+    private async Task OnChange(ChangeEventArgs e)
+    {
+        if (Enum.TryParse(e.Value?.ToString(), out TEnum v))
+        {
+            Value = v;
+            await ValueChanged.InvokeAsync(v);
+        }
+    }
+}

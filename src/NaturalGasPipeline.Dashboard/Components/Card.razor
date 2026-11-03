@@ -1,0 +1,12 @@
+<section class="card @Class">
+    <div class="card-h">@Title @if (Aside is not null) { <span class="aside">@Aside</span> }</div>
+    <div class="card-b @(Flush ? "flush" : "")">@ChildContent</div>
+</section>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? Aside { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public bool Flush { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

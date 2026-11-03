@@ -1,0 +1,28 @@
+<div class="field @Class">
+    <label>@Label @if (!string.IsNullOrEmpty(Unit)) { <span class="u">[@Unit]</span> }</label>
+    <input type="text" inputmode="decimal" value="@Text" @onchange="OnChange" placeholder="@Placeholder" title="@Hint" />
+</div>
+
+@code {
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string? Unit { get; set; }
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public double Value { get; set; }
+    [Parameter] public EventCallback<double> ValueChanged { get; set; }
+
+    private string Text => Value.ToString("0.######", Inv);
+
+    private async Task OnChange(ChangeEventArgs e)
+    {
+        string s = (e.Value?.ToString() ?? "").Replace(',', '.').Trim();
+        if (double.TryParse(s, NumberStyles.Float, Inv, out double v) && double.IsFinite(v))
+        {
+            Value = v;
+            await ValueChanged.InvokeAsync(v);
+        }
+    }
+}

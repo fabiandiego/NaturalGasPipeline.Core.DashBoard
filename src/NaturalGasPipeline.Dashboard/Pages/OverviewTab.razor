@@ -1,0 +1,189 @@
+@* Overview: what the engine answers, how its modules depend on each other,
+   and the catalogue of models discovered from the engine build in use. *@
+
+<div class="page-head">
+    <h1>Engine overview</h1>
+    <p>
+        The dashboard runs <b>NaturalGasPipeline.Core</b> itself, compiled to WebAssembly.
+        Each tab answers one of the engine's design questions; the model lists below are read
+        from the engine at start-up, so a newer engine shows its new models without changes here.
+    </p>
+</div>
+
+<div class="grid cols-3" style="margin-bottom:16px">
+    @foreach (var q in Questions)
+    {
+        <section class="card">
+            <div class="card-h">@q.Tag · @q.Title</div>
+            <div class="card-b">
+                <p style="margin:0 0 10px">@q.Text</p>
+                <p class="muted small" style="margin:0 0 12px">Module: <code>@q.Module</code></p>
+                <button class="btn sm" @onclick="() => OnNavigate.InvokeAsync(q.Tab)">Open</button>
+            </div>
+        </section>
+    }
+</div>
+
+<div class="grid cols-even">
+    <Card Title="Module structure" Flush="true">
+        <Aside>dependencies point one way only</Aside>
+        <ChildContent>
+            <Sheet Code="OV-01" Title="Engine modules">
+                <svg viewBox="0 0 900 330" role="img" aria-label="Engine module dependency diagram">
+                    <defs>
+                        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                            <path d="M0 0L10 5L0 10z" fill="#1f74c4" />
+                        </marker>
+                    </defs>
+                    @foreach (var e in Edges)
+                    {
+                        var a = Boxes[e.From];
+                        var b = Boxes[e.To];
+                        <path d="@EdgePath(a, b)" fill="none" stroke="#1f74c4" stroke-width="1.8" marker-end="url(#arr)" />
+                    }
+                    @foreach (var (name, box) in Boxes)
+                    {
+                        <g>
+                            <rect x="@box.X" y="@box.Y" width="150" height="76" rx="2" fill="@(box.Accent ? "#0a5ba8" : "#f2f7fc")" stroke="#0a5ba8" stroke-width="1.5" />
+                            <rect x="@box.X" y="@box.Y" width="150" height="5" fill="#063a6e" />
+                            <text x="@(box.X + 10)" y="@(box.Y + 26)" font-family="PT Sans Narrow, sans-serif" font-weight="700" font-size="15" fill="@(box.Accent ? "#fff" : "#063a6e")">@name</text>
+                            <text x="@(box.X + 10)" y="@(box.Y + 46)" font-size="11.5" fill="@(box.Accent ? "#e3eef9" : "#3d4a5a")">@box.Line1</text>
+                            <text x="@(box.X + 10)" y="@(box.Y + 62)" font-size="11.5" fill="@(box.Accent ? "#e3eef9" : "#3d4a5a")">@box.Line2</text>
+                        </g>
+                    }
+                    <g><text x="20" y="318" font-size="11" fill="#6b7a8f">Arrow: "is used by". Network assembles every module; Mechanics is marked pending review in the engine.</text></g>
+                </svg>
+            </Sheet>
+        </ChildContent>
+    </Card>
+
+    <Card Title="Engine build in use">
+        <table class="data">
+            <tbody>
+                <tr><td>Repository</td><td><a href="https://github.com/fabiandiego/NaturalGasPipeline.Core" target="_blank" rel="noopener">fabiandiego/NaturalGasPipeline.Core</a></td></tr>
+                <tr><td>Commit</td><td><code>@(Version?.EngineCommit ?? "local checkout")</code></td></tr>
+                <tr><td>Commit date</td><td>@(Version?.EngineDate ?? "—")</td></tr>
+                <tr><td>Last change</td><td>@(Version?.EngineSubject ?? "—")</td></tr>
+                <tr><td>Dashboard built</td><td>@(Version?.BuiltAt ?? "—")</td></tr>
+            </tbody>
+        </table>
+        <p class="small muted" style="margin:12px 0 0">
+            The engine is a git submodule. A daily job moves it to the latest <code>master</code>, runs the
+            bridge tests against the engine's published example cases (R1–R3, S1–S2) and redeploys only if they pass.
+            To update now: <a href="https://github.com/fabiandiego/NaturalGasPipeline.Core.DashBoard/actions/workflows/build-deploy.yml" target="_blank" rel="noopener">Actions → build-test-deploy → Run workflow</a>.
+        </p>
+        <table class="data" style="margin-top:12px">
+            <thead><tr><th>Assembly</th><th>Version</th></tr></thead>
+            <tbody>
+                @foreach (var (module, version) in EngineCatalog.Modules())
+                {
+                    <tr><td><code>@module</code></td><td class="num">@version</td></tr>
+                }
+            </tbody>
+        </table>
+    </Card>
+</div>
+
+<div class="grid cols-3" style="margin-top:16px">
+    <Card Title="Components">
+        <Aside>@EngineCatalog.ComponentNames.Count from the engine</Aside>
+        <ChildContent>
+            <div class="actions">@foreach (string c in EngineCatalog.ComponentNames) { <span class="tag">@c</span> }</div>
+        </ChildContent>
+    </Card>
+    <Card Title="Compressibility (Z) models">
+        <Aside>@EngineCatalog.CompressibilityModels.Count by composition, + γ routes</Aside>
+        <ChildContent>
+            <div class="actions">
+                @foreach (var z in EngineCatalog.CompressibilityModels) { <span class="tag">@EngineCatalog.Label(z)</span> }
+                <span class="tag">DAK · Sutton γ</span><span class="tag">DAK · Wichert-Aziz</span><span class="tag">CNGA</span>
+            </div>
+        </ChildContent>
+    </Card>
+    <Card Title="Friction & flow equations">
+        <ChildContent>
+            <div class="actions">
+                @foreach (var f in EngineCatalog.FrictionModels) { <span class="tag">@EngineCatalog.Label(f)</span> }
+                <span class="tag">AGA drag factor Df</span>
+                <span class="tag ok">General Flow</span><span class="tag ok">Weymouth</span><span class="tag ok">Panhandle A</span><span class="tag ok">Panhandle B</span>
+            </div>
+        </ChildContent>
+    </Card>
+    <Card Title="Station planning">
+        <div class="actions">
+            <span class="tag">Method 1 · maximum spacing</span><span class="tag">Method 2 · equal ratios</span>
+            <span class="tag">Station count vs power</span><span class="tag">MAOP / velocity checks</span>
+        </div>
+        <p class="small muted" style="margin:10px 0 0">Optimisation methods (minimum power, minimum cost, DP over candidate sites) are planned in the engine and not yet available.</p>
+    </Card>
+    <Card Title="Line pipe & code factors">
+        <div class="actions">
+            @foreach (var g in EngineCatalog.PipeGrades) { <span class="tag">@g.Name</span> }
+            @foreach (var c in EngineCatalog.LocationClasses) { <span class="tag">@EngineCatalog.Label(c)</span> }
+        </div>
+    </Card>
+    <Card Title="Open items in the engine">
+        <ChildContent>
+            <ul class="notes" style="margin:-14px">
+                @foreach (var item in EngineCatalog.PendingReviewItems())
+                {
+                    <li><b>@item.Item</b> <code>@item.Member</code> — @item.Reason</li>
+                }
+                <li>Station energy consumption awaits the machinery library (drivers, efficiencies, fuel); the planner reports isentropic power.</li>
+                <li>Pipe flow is steady and isothermal at the flowing temperature.</li>
+            </ul>
+        </ChildContent>
+    </Card>
+</div>
+
+@code {
+    [Parameter] public VersionInfo? Version { get; set; }
+    [Parameter] public EventCallback<string> OnNavigate { get; set; }
+
+    private sealed record Q(string Tag, string Title, string Text, string Module, string Tab);
+
+    private static readonly Q[] Questions =
+    {
+        new("Q1", "What gas do I have?", "Composition → molar mass, gravity, pseudo-critical properties, Z with every model of the engine, density and viscosity.", "Thermodynamics", "gas"),
+        new("Q2", "Pressure loss A → B", "One pipe with friction, elevation and distance: outlet pressure, flow capacity or required diameter, and the classic flow equations side by side.", "Hydraulics · Correlations", "segment"),
+        new("Q3", "How many stations, how far apart?", "Compressor stations placed on a real terrain profile; hydraulic gradient, station table and power against station count.", "Network", "stations"),
+        new("Q4", "What is each station like?", "Multi-stage compression with intercooling: head, discharge temperatures and gas / shaft power per stage.", "Compression", "compressor"),
+        new("—", "Wall thickness", "Design pressure, hoop stress and %SMYS from API 5L grades and location-class factors (pending review in the engine).", "Mechanics", "mechanics"),
+        new("·", "Calculation diagrams", "Every tab shows the chain of steps the engine follows, with the values it produced.", "all", "gas")
+    };
+
+    private sealed record Box(int X, int Y, string Line1, string Line2, bool Accent = false);
+
+    private static readonly Dictionary<string, Box> Boxes = new()
+    {
+        ["Core"] = new(20, 30, "units, flows, pipe,", "numerical solvers"),
+        ["Thermodynamics"] = new(200, 30, "components, mixtures,", "Z, viscosity"),
+        ["Hydraulics"] = new(380, 30, "friction, Reynolds,", "isothermal solver"),
+        ["Correlations"] = new(560, 30, "General Flow, AGA,", "Weymouth, Panhandle"),
+        ["Network"] = new(730, 130, "series, networks,", "station planner", true),
+        ["Compression"] = new(380, 140, "stages, stations,", "isentropic / polytropic"),
+        ["Mechanics"] = new(200, 230, "B31.8 / 49 CFR 192,", "API 5L (pending review)")
+    };
+
+    private sealed record Edge(string From, string To);
+
+    private static readonly Edge[] Edges =
+    {
+        new("Core", "Thermodynamics"), new("Thermodynamics", "Hydraulics"), new("Hydraulics", "Correlations"),
+        new("Correlations", "Network"), new("Thermodynamics", "Compression"), new("Compression", "Network"),
+        new("Core", "Mechanics"), new("Mechanics", "Network")
+    };
+
+    private static string EdgePath(Box a, Box b)
+    {
+        double x1 = a.X + 150, y1 = a.Y + 38, x2 = b.X, y2 = b.Y + 38;
+        if (b.Y > a.Y + 50 && b.X <= a.X + 150)
+        {
+            // downward: leave from the bottom
+            x1 = a.X + 75; y1 = a.Y + 76;
+            return FormattableString.Invariant($"M{x1} {y1} C{x1} {y1 + 40} {x2 - 40} {y2} {x2} {y2}");
+        }
+        double mx = (x1 + x2) / 2;
+        return FormattableString.Invariant($"M{x1} {y1} C{mx} {y1} {mx} {y2} {x2 - 2} {y2}");
+    }
+}

@@ -105,7 +105,8 @@ jobs:
         run: |
           python3 - <<'PY'
           text = open('test.txt', encoding='utf-8', errors='replace').read()
-          keep = [l.strip() for l in text.split('\n') if l.strip().startswith(('R1', 'R2', 'R3', 'S1', 'S2', 'P2 =', 'D (', 'r =', 'Total tests', 'Passed!', 'NaturalGasPipeline.'))]
+          import re
+          keep = [l.strip() for l in text.split('\n') if re.search(r'^\s*((R[123]|S[12]): |P2 = |D \(|r = |Total tests|Passed!|Failed!)', l)]
           body = '\n'.join(keep)[:3800] or 'no output'
           print('::notice title=Bridge tests::' + body.replace('%', '%25').replace('\n', '%0A'))
           PY

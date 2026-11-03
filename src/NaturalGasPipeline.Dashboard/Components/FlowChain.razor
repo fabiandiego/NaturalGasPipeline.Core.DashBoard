@@ -1,0 +1,23 @@
+@* Calculation flow: each box is one step the engine performs, with the
+   formula it uses and the value it produced for the current inputs. *@
+<div class="flow">
+    @for (int i = 0; i < Nodes.Count; i++)
+    {
+        var n = Nodes[i];
+        if (i > 0)
+        {
+            <div class="flow-arrow" aria-hidden="true"></div>
+        }
+        <div class="flow-node @(n.Output ? "out" : "")">
+            <div class="t">@n.Title</div>
+            @if (!string.IsNullOrEmpty(n.Formula)) { <div class="f">@n.Formula</div> }
+            @if (!string.IsNullOrEmpty(n.Result)) { <div class="r">@n.Result</div> }
+        </div>
+    }
+</div>
+
+@code {
+    public sealed record Node(string Title, string? Formula, string? Result, bool Output = false);
+
+    [Parameter] public IReadOnlyList<Node> Nodes { get; set; } = Array.Empty<Node>();
+}

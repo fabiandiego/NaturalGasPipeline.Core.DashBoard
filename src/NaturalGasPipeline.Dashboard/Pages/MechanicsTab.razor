@@ -1,0 +1,175 @@
+@inject AppState S
+
+<div class="page-head">
+    <h1>Wall thickness · design pressure</h1>
+    <p>Barlow design pressure P = (2·S·t/D)·F·E·T (gauge), hoop stress and %SMYS (engine: <code>SteelPipeDesign</code>). Code factors from 49 CFR 192 / ASME B31.8 tables as implemented in the engine.</p>
+</div>
+
+<div class="error-box" style="margin-bottom:16px;background:#fbf1df;border-color:#ecd29e;color:#7a5410">
+    <b>Pending review in the engine.</b> The Mechanics module is marked <code>[PendingReview]</code> until the owner signs off the checklist (docs/MECHANICS_REVIEW.md). Do not use these numbers for design.
+    <ul style="margin:6px 0 0 18px;padding:0">
+        @foreach (var item in EngineCatalog.PendingReviewItems())
+        {
+            <li><b>@item.Item</b> @item.Member — @item.Reason</li>
+        }
+    </ul>
+</div>
+
+<div class="grid cols-2">
+    <Card Title="Inputs">
+        <div class="form">
+            <NumField Label="Outside diameter D" Unit="mm" @bind-Value="I.OutsideDiameterMm" @bind-Value:after="Recalc" />
+            <NumField Label="Wall thickness t" Unit="mm" @bind-Value="I.WallThicknessMm" @bind-Value:after="Recalc" />
+            <div class="field full">
+                <label>Line pipe grade (API 5L)</label>
+                <select @onchange="SetGrade">
+                    @foreach (var g in EngineCatalog.PipeGrades)
+                    {
+                        <option value="@g.Name" selected="@(g.Name == I.GradeName)">@g.Name — SMYS @Fmt.N(g.Smys.Megapascals, 0) MPa</option>
+                    }
+                </select>
+            </div>
+            <EnumField TEnum="LocationClass" Class="full" Label="Location class" Values="EngineCatalog.LocationClasses" @bind-Value="I.LocationClass" @bind-Value:after="Recalc" />
+            <EnumField TEnum="LongitudinalJoint" Class="full" Label="Longitudinal seam" Values="EngineCatalog.Joints" @bind-Value="I.Joint" @bind-Value:after="Recalc" />
+            <NumField Label="Design temperature" Unit="°C" @bind-Value="I.DesignTemperatureC" @bind-Value:after="Recalc" />
+            <NumField Label="Operating pressure" Unit="MPa(a)" @bind-Value="I.OperatingPressureMPa" @bind-Value:after="Recalc" />
+            <NumField Label="Atmospheric pressure" Unit="kPa" @bind-Value="I.AtmosphericKPa" @bind-Value:after="Recalc" />
+            @if (S.LastPlan is { } plan)
+            {
+                <div class="full actions">
+                    <button class="btn ghost sm" @onclick="() => FromPlan(plan)">Use the highest pressure of the station plan (@Fmt.N(plan.PressureProfile.Max(p => p.MPa), 2) MPa)</button>
+                </div>
+            }
+        </div>
+    </Card>
+
+    <div class="stack">
+        @if (_error is not null)
+        {
+            <div class="error-box">@_error</div>
+        }
+        @if (_a is not null)
+        {
+            var a = _a;
+            <section class="card">
+                <div class="kpis">
+                    <div class="kpi hl"><div class="k">Design pressure</div><div class="v">@Fmt.N(a.DesignPressureGaugeMPa, 2)<small>MPa(g)</small></div></div>
+                    <div class="kpi"><div class="k">Hoop stress at operation</div><div class="v">@Fmt.N(a.HoopStressMPa, 0)<small>MPa</small></div></div>
+                    <div class="kpi"><div class="k">Utilisation</div><div class="v">@Fmt.Pct(a.FractionOfSmys)<small>SMYS</small></div></div>
+                    <div class="kpi"><div class="k">Required wall</div><div class="v">@Fmt.N(a.RequiredWallMm, 2)<small>mm</small></div></div>
+                    <div class="kpi"><div class="k">D / t</div><div class="v">@Fmt.N(a.DiameterToThickness, 1)</div></div>
+                    <div class="kpi"><div class="k">Check</div><div class="v" style="color:@(a.WithinDesignPressure ? "var(--ok)" : "var(--bad)")">@(a.WithinDesignPressure ? "OK" : "EXCEEDED")</div></div>
+                </div>
+            </section>
+
+            <Card Title="Calculation flow" Flush="true">
+                <FlowChain Nodes="@Flow(a)" />
+            </Card>
+
+            <div class="grid cols-even">
+                <Card Title="Cross-section" Flush="true">
+                    <Sheet Code="M-01" Title="Hoop stress, thin wall">
+                        <svg viewBox="0 0 420 300" role="img" aria-label="Pipe cross-section">
+                            @{
+                                double ro = 110, ri = Math.Max(40, ro * (1 - 2 * I.WallThicknessMm / I.OutsideDiameterMm * 4));
+                            }
+                            <circle cx="160" cy="150" r="@Fmt.S(ro)" fill="#0a5ba8" />
+                            <circle cx="160" cy="150" r="@Fmt.S(ri)" fill="#e3eef9" />
+                            <g>
+                                <text x="160" y="150" text-anchor="middle" font-size="13" fill="#063a6e">P = @Fmt.N(a.OperatingGaugeMPa, 2) MPa(g)</text>
+                                <text x="160" y="168" text-anchor="middle" font-size="11" fill="#3d4a5a">(wall drawn ×4)</text>
+                            </g>
+                            @foreach (double ang in new[] { 0.0, 60, 120, 180, 240, 300 })
+                            {
+                                double rad = ang * Math.PI / 180;
+                                double x1 = 160 + (ri - 32) * Math.Cos(rad), y1 = 150 + (ri - 32) * Math.Sin(rad);
+                                double x2 = 160 + (ri - 6) * Math.Cos(rad), y2 = 150 + (ri - 6) * Math.Sin(rad);
+                                <line x1="@Fmt.S(x1)" y1="@Fmt.S(y1)" x2="@Fmt.S(x2)" y2="@Fmt.S(y2)" stroke="#e8a317" stroke-width="3" marker-end="url(#pa)" />
+                            }
+                            <defs><marker id="pa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#e8a317" /></marker></defs>
+                            <path d="M160 32 A118 118 0 0 1 278 150" fill="none" stroke="#c53030" stroke-width="2" stroke-dasharray="5 4" />
+                            <g>
+                                <text x="292" y="70" font-size="12" font-weight="700" fill="#c53030">σ_h = P·D / (2t)</text>
+                                <text x="292" y="88" font-size="12" font-family="PT Mono, monospace" fill="#c53030">@Fmt.N(a.HoopStressMPa, 0) MPa</text>
+                                <text x="292" y="130" font-size="12" fill="#063a6e">D = @Fmt.N(I.OutsideDiameterMm, 1) mm</text>
+                                <text x="292" y="148" font-size="12" fill="#063a6e">t = @Fmt.N(I.WallThicknessMm, 2) mm</text>
+                                <text x="292" y="166" font-size="12" fill="#063a6e">@a.Grade</text>
+                            </g>
+                        </svg>
+                    </Sheet>
+                </Card>
+                <Card Title="Utilisation" Flush="true">
+                    <Sheet Code="M-02" Title="Hoop stress against the allowable">
+                        <svg viewBox="0 0 420 300" role="img" aria-label="Utilisation bar">
+                            @{
+                                double scale = 300.0 / Math.Max(a.SmysMPa, a.HoopStressMPa) * 0.95;
+                                double hAllow = a.AllowableHoopMPa * scale, hHoop = a.HoopStressMPa * scale, hSmys = a.SmysMPa * scale;
+                                double baseY = 270;
+                            }
+                            <rect x="70" y="@Fmt.S(baseY - hSmys)" width="90" height="@Fmt.S(hSmys)" fill="#eaeff4" stroke="#b9c4d2" />
+                            <rect x="70" y="@Fmt.S(baseY - hAllow)" width="90" height="@Fmt.S(hAllow)" fill="#e3eef9" stroke="#7fb2e5" />
+                            <rect x="90" y="@Fmt.S(baseY - hHoop)" width="50" height="@Fmt.S(hHoop)" fill="@(a.WithinDesignPressure ? "#0a5ba8" : "#c53030")" />
+                            <line x1="40" x2="400" y1="@baseY" y2="@baseY" stroke="#3d4a5a" />
+                            <g>
+                                <text x="170" y="@Fmt.S(baseY - hSmys + 4)" font-size="12" fill="#6b7a8f">SMYS @Fmt.N(a.SmysMPa, 0) MPa</text>
+                                <text x="170" y="@Fmt.S(baseY - hAllow + 4)" font-size="12" fill="#1f74c4">allowable F·E·T·S = @Fmt.N(a.AllowableHoopMPa, 0) MPa</text>
+                                <text x="170" y="@Fmt.S(baseY - hHoop + 18)" font-size="12" font-weight="700" fill="@(a.WithinDesignPressure ? "#0a5ba8" : "#c53030")">operating σ_h = @Fmt.N(a.HoopStressMPa, 0) MPa (@Fmt.Pct(a.FractionOfSmys))</text>
+                                <text x="170" y="290" font-size="11" fill="#6b7a8f">F = @Fmt.N(a.DesignFactor, 2) · E = @Fmt.N(a.JointFactor, 2) · T = @Fmt.N(a.TemperatureFactor, 3)</text>
+                            </g>
+                        </svg>
+                    </Sheet>
+                </Card>
+            </div>
+
+            <Card Title="Warnings" Flush="true">
+                <Notes Items="a.Warnings" Empty="No warnings from the engine." />
+            </Card>
+        }
+    </div>
+</div>
+
+@code {
+    private MechanicsInput I => S.Mechanics;
+    private MechanicsAnalysis? _a;
+    private string? _error;
+
+    protected override void OnInitialized() => Recalc();
+
+    private void SetGrade(ChangeEventArgs e)
+    {
+        I.GradeName = e.Value?.ToString() ?? I.GradeName;
+        Recalc();
+    }
+
+    private void FromPlan(PlanAnalysis plan)
+    {
+        I.OperatingPressureMPa = plan.PressureProfile.Max(p => p.MPa);
+        I.OutsideDiameterMm = S.Planner.InternalDiameterMm + 2 * I.WallThicknessMm;
+        Recalc();
+    }
+
+    private void Recalc()
+    {
+        try
+        {
+            _a = MechanicsService.Analyze(I);
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _a = null;
+            _error = ex.Message;
+        }
+    }
+
+    private static IReadOnlyList<FlowChain.Node> Flow(MechanicsAnalysis a) => new FlowChain.Node[]
+    {
+        new("Grade", a.Grade, $"S = {Fmt.N(a.SmysMPa, 0)} MPa"),
+        new("Location class", "F (49 CFR 192.111)", $"F = {Fmt.N(a.DesignFactor, 2)}"),
+        new("Seam", "E (49 CFR 192.113)", $"E = {Fmt.N(a.JointFactor, 2)}"),
+        new("Temperature", "T (49 CFR 192.115)", $"T = {Fmt.N(a.TemperatureFactor, 3)}"),
+        new("Design pressure", "P = 2·S·t/D · F·E·T", $"{Fmt.N(a.DesignPressureGaugeMPa, 2)} MPa(g)"),
+        new("Operating", "P_op(g) = P_op(a) − P_atm", $"{Fmt.N(a.OperatingGaugeMPa, 2)} MPa(g)"),
+        new("Hoop stress", "σ_h = P·D / (2t)", $"{Fmt.N(a.HoopStressMPa, 0)} MPa · {Fmt.Pct(a.FractionOfSmys)}", true)
+    };
+}

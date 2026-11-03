@@ -1,0 +1,19 @@
+@if (Items is { Count: > 0 })
+{
+    <ul class="notes @(Info ? "info" : "")">
+        @foreach (string w in Items)
+        {
+            <li>@w</li>
+        }
+    </ul>
+}
+else if (!string.IsNullOrEmpty(Empty))
+{
+    <p class="muted small" style="margin:10px 14px">@Empty</p>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<string>? Items { get; set; }
+    [Parameter] public bool Info { get; set; }
+    [Parameter] public string? Empty { get; set; }
+}

@@ -1,0 +1,214 @@
+@* Line chart drawn as SVG from C#: linear or logarithmic axes, reference lines,
+   highlighted points. No JavaScript library. *@
+
+<svg class="chart" viewBox="0 0 @W @H" role="img" aria-label="@Title">
+    @if (!string.IsNullOrEmpty(Title)) { <title>@Title</title> }
+    <rect x="@L" y="@T" width="@(W - L - R)" height="@(H - T - B)" fill="#fff" />
+
+    @* grid + ticks *@
+    @foreach (var (v, major) in _xTicks)
+    {
+        <g>
+            <line class="grid @(major ? "major" : "")" x1="@Fmt.S(Px(v))" x2="@Fmt.S(Px(v))" y1="@T" y2="@(H - B)" />
+            @if (major)
+            {
+                <text class="tick" x="@Fmt.S(Px(v))" y="@(H - B + 16)" text-anchor="middle">@TickLabel(v, LogX)</text>
+            }
+        </g>
+    }
+    @foreach (var (v, major) in _yTicks)
+    {
+        <g>
+            <line class="grid @(major ? "major" : "")" x1="@L" x2="@(W - R)" y1="@Fmt.S(Py(v))" y2="@Fmt.S(Py(v))" />
+            @if (major)
+            {
+                <text class="tick" x="@(L - 6)" y="@Fmt.S(Py(v) + 4)" text-anchor="end">@TickLabel(v, LogY)</text>
+            }
+        </g>
+    }
+
+    <line class="axis" x1="@L" x2="@(W - R)" y1="@(H - B)" y2="@(H - B)" />
+    <line class="axis" x1="@L" x2="@L" y1="@T" y2="@(H - B)" />
+    <g><text class="alabel" x="@((L + W - R) / 2)" y="@(H - 6)" text-anchor="middle">@XLabel</text></g>
+    <g><text class="alabel" transform="translate(14 @((T + H - B) / 2)) rotate(-90)" text-anchor="middle">@YLabel</text></g>
+
+    <defs><clipPath id="@_clip"><rect x="@L" y="@T" width="@(W - L - R)" height="@(H - T - B)" /></clipPath></defs>
+    <g clip-path="@($"url(#{_clip})")">
+        @foreach (var s in Series.Where(s => s.Area))
+        {
+            <path d="@AreaPath(s)" fill="@s.Color" fill-opacity="0.14" stroke="none" />
+        }
+        @foreach (var s in Series)
+        {
+            <path d="@LinePath(s)" fill="none" stroke="@s.Color" stroke-width="@Fmt.S(s.Width)"
+                  stroke-dasharray="@(s.Dashed ? "6 4" : "none")" stroke-linejoin="round" stroke-linecap="round" />
+            if (s.Markers)
+            {
+                foreach (var p in s.Points.Where(Valid))
+                {
+                    <circle cx="@Fmt.S(Px(p.X))" cy="@Fmt.S(Py(p.Y))" r="3" fill="#fff" stroke="@s.Color" stroke-width="1.5" />
+                }
+            }
+        }
+        @foreach (var h in HLines ?? Array.Empty<ChartHLine>())
+        {
+            <g>
+                <line x1="@L" x2="@(W - R)" y1="@Fmt.S(Py(h.Y))" y2="@Fmt.S(Py(h.Y))" stroke="@h.Color" stroke-width="1.5" stroke-dasharray="@(h.Dashed ? "5 4" : "none")" />
+                <text x="@(W - R - 4)" y="@Fmt.S(Py(h.Y) - 5)" text-anchor="end" font-size="11" fill="@h.Color">@h.Label</text>
+            </g>
+        }
+        @foreach (var v in VLines ?? Array.Empty<ChartVLine>())
+        {
+            <g>
+                <line x1="@Fmt.S(Px(v.X))" x2="@Fmt.S(Px(v.X))" y1="@T" y2="@(H - B)" stroke="@v.Color" stroke-width="1.2" stroke-dasharray="@(v.Dashed ? "4 4" : "none")" />
+                <text x="@Fmt.S(Px(v.X) + 4)" y="@(T + 12)" font-size="11" font-weight="700" fill="@v.Color">@v.Label</text>
+            </g>
+        }
+        @foreach (var p in Points ?? Array.Empty<ChartPoint>())
+        {
+            <g>
+                <circle cx="@Fmt.S(Px(p.X))" cy="@Fmt.S(Py(p.Y))" r="6" fill="@p.Color" stroke="#fff" stroke-width="2" />
+                <text x="@Fmt.S(Px(p.X) + 9)" y="@Fmt.S(Py(p.Y) - 8)" font-size="12" font-weight="700" fill="@p.Color">@p.Label</text>
+            </g>
+        }
+    </g>
+</svg>
+@if (ShowLegend && Series.Any(s => s.InLegend))
+{
+    <div class="legend">
+        @foreach (var s in Series.Where(s => s.InLegend))
+        {
+            <span><i class="@(s.Dashed ? "dash" : "")" style="background:@s.Color;color:@s.Color"></i>@s.Name</span>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<ChartSeries> Series { get; set; } = Array.Empty<ChartSeries>();
+    [Parameter] public IReadOnlyList<ChartVLine>? VLines { get; set; }
+    [Parameter] public IReadOnlyList<ChartHLine>? HLines { get; set; }
+    [Parameter] public IReadOnlyList<ChartPoint>? Points { get; set; }
+    [Parameter] public string XLabel { get; set; } = "";
+    [Parameter] public string YLabel { get; set; } = "";
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public bool LogX { get; set; }
+    [Parameter] public bool LogY { get; set; }
+    [Parameter] public double? XMin { get; set; }
+    [Parameter] public double? XMax { get; set; }
+    [Parameter] public double? YMin { get; set; }
+    [Parameter] public double? YMax { get; set; }
+    [Parameter] public int W { get; set; } = 720;
+    [Parameter] public int H { get; set; } = 320;
+    [Parameter] public bool ShowLegend { get; set; } = true;
+
+    private const int L = 62, R = 14, T = 12, B = 42;
+    private readonly string _clip = "c" + Guid.NewGuid().ToString("N")[..8];
+    private double _x0, _x1, _y0, _y1;
+    private List<(double, bool)> _xTicks = new(), _yTicks = new();
+
+    protected override void OnParametersSet()
+    {
+        var xs = new List<double>();
+        var ys = new List<double>();
+        foreach (var s in Series)
+        {
+            foreach (var p in s.Points)
+            {
+                if (Valid(p)) { xs.Add(p.X); ys.Add(p.Y); }
+            }
+        }
+        foreach (var h in HLines ?? Array.Empty<ChartHLine>()) { if (double.IsFinite(h.Y)) ys.Add(h.Y); }
+        foreach (var p in Points ?? Array.Empty<ChartPoint>()) { if (Valid((p.X, p.Y))) { xs.Add(p.X); ys.Add(p.Y); } }
+
+        (_x0, _x1, _xTicks) = Axis(xs, XMin, XMax, LogX);
+        (_y0, _y1, _yTicks) = Axis(ys, YMin, YMax, LogY);
+    }
+
+    private bool Valid((double X, double Y) p) =>
+        double.IsFinite(p.X) && double.IsFinite(p.Y) && (!LogX || p.X > 0) && (!LogY || p.Y > 0);
+
+    private static double Tr(double v, bool log) => log ? Math.Log10(v) : v;
+
+    private double Px(double x) => L + (Tr(x, LogX) - _x0) / (_x1 - _x0) * (W - L - R);
+
+    private double Py(double y) => H - B - (Tr(y, LogY) - _y0) / (_y1 - _y0) * (H - T - B);
+
+    /// <summary>Domain in transformed units and tick values in data units.</summary>
+    private static (double, double, List<(double, bool)>) Axis(List<double> values, double? min, double? max, bool log)
+    {
+        var tv = values.Select(v => Tr(v, log)).ToList();
+        double lo = min is double a ? Tr(a, log) : (tv.Count > 0 ? tv.Min() : 0);
+        double hi = max is double b ? Tr(b, log) : (tv.Count > 0 ? tv.Max() : 1);
+        if (hi - lo < 1e-12) { double pad = Math.Abs(lo) > 1e-9 ? Math.Abs(lo) * 0.05 : 1; lo -= pad; hi += pad; }
+
+        var ticks = new List<(double, bool)>();
+        if (log)
+        {
+            if (min is null) lo = Math.Floor(lo);
+            if (max is null) hi = Math.Ceiling(hi);
+            for (int d = (int)Math.Floor(lo); d <= (int)Math.Ceiling(hi); d++)
+            {
+                for (int k = 1; k <= 9; k++)
+                {
+                    double v = k * Math.Pow(10, d);
+                    double t = Math.Log10(v);
+                    if (t >= lo - 1e-9 && t <= hi + 1e-9) ticks.Add((v, k == 1));
+                }
+            }
+            return (lo, hi, ticks);
+        }
+
+        double step = NiceStep((hi - lo) / 6.0);
+        if (min is null) lo = Math.Floor(lo / step + 1e-9) * step;
+        if (max is null) hi = Math.Ceiling(hi / step - 1e-9) * step;
+        for (double v = Math.Ceiling(lo / step - 1e-9) * step; v <= hi + step * 1e-6; v += step)
+        {
+            ticks.Add((Math.Abs(v) < step * 1e-9 ? 0 : v, true));
+        }
+        return (lo, hi, ticks);
+    }
+
+    private static double NiceStep(double raw)
+    {
+        double mag = Math.Pow(10, Math.Floor(Math.Log10(raw)));
+        double n = raw / mag;
+        return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * mag;
+    }
+
+    private static string TickLabel(double v, bool log)
+    {
+        if (log)
+        {
+            int e = (int)Math.Round(Math.Log10(v));
+            return e is >= -2 and <= 4 ? v.ToString("0.##", CultureInfo.InvariantCulture) : "1e" + e.ToString(CultureInfo.InvariantCulture);
+        }
+        double a = Math.Abs(v);
+        string f = a >= 1000 ? "0" : a >= 10 ? "0.#" : a >= 1 ? "0.##" : "0.###";
+        return v.ToString(f, CultureInfo.InvariantCulture);
+    }
+
+    private string LinePath(ChartSeries s)
+    {
+        var sb = new System.Text.StringBuilder();
+        bool pen = false;
+        foreach (var p in s.Points)
+        {
+            if (!Valid(p)) { pen = false; continue; }
+            sb.Append(pen ? 'L' : 'M').Append(Fmt.S(Px(p.X))).Append(' ').Append(Fmt.S(Py(p.Y))).Append(' ');
+            pen = true;
+        }
+        return sb.Length == 0 ? "M0 0" : sb.ToString();
+    }
+
+    private string AreaPath(ChartSeries s)
+    {
+        var pts = s.Points.Where(Valid).ToList();
+        if (pts.Count < 2) return "M0 0";
+        double baseY = H - B;
+        var sb = new System.Text.StringBuilder();
+        sb.Append('M').Append(Fmt.S(Px(pts[0].X))).Append(' ').Append(Fmt.S(baseY)).Append(' ');
+        foreach (var p in pts) sb.Append('L').Append(Fmt.S(Px(p.X))).Append(' ').Append(Fmt.S(Py(p.Y))).Append(' ');
+        sb.Append('L').Append(Fmt.S(Px(pts[^1].X))).Append(' ').Append(Fmt.S(baseY)).Append(" Z");
+        return sb.ToString();
+    }
+}
