@@ -90,6 +90,23 @@ public class BridgeTests
     }
 
     [Fact]
+    public void Gas_Aga8CompositionRangeIsReportedOncePerGas()
+    {
+        var gas = new GasDefinition();
+        gas.Set(Presets.Cases.Single(c => c.Id == "R3").Composition);
+        GasAnalysis inside = GasService.Analyze(gas, 7.0, 15.0, CompressibilityModelType.Aga8Detail, new StandardConditionsInput());
+        Assert.True(inside.Aga8CompositionInNormalRange);
+
+        // 1 mol % H2S exceeds the AGA8 normal-range limit of 0.02 mol %.
+        gas.Set(new[] { ("Methane", 95.0), ("Ethane", 3.0), ("Nitrogen", 1.0), ("HydrogenSulfide", 1.0) });
+        GasAnalysis sour = GasService.Analyze(gas, 7.0, 15.0, CompressibilityModelType.Aga8Detail, new StandardConditionsInput());
+        _output.WriteLine("AGA8 composition: " + string.Join("; ", sour.Aga8CompositionViolations));
+        Assert.False(sour.Aga8CompositionInNormalRange);
+        Assert.NotEmpty(sour.Aga8CompositionViolations);
+        Assert.Single(sour.Warnings, w => w.Contains("AGA8-DC92 normal range"));
+    }
+
+    [Fact]
     public void Segment_SolveModesAreConsistent()
     {
         var gas = new GasDefinition();

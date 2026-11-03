@@ -121,6 +121,37 @@
                 </Card>
             </div>
 
+            <Card Title="AGA8-DC92 normal range" Flush="true">
+                <Aside>two independent parts, as the engine checks them</Aside>
+                <ChildContent>
+                    <table class="data">
+                        <tbody>
+                            <tr>
+                                <td>Pressure and temperature (checked at every state)</td>
+                                <td>@{ var agaRow = a.ZTable.FirstOrDefault(r => r.Model.StartsWith("AGA8")); }
+                                    @if (agaRow?.WithinValidatedRange == true) { <span class="tag ok">inside</span> }
+                                    else if (agaRow?.WithinValidatedRange == false) { <span class="tag warn">outside</span> }
+                                    else { <span class="tag">n/a</span> }
+                                </td>
+                                <td class="muted small">17–143 °F (264.8–334.8 K), P ≤ 1750 psia (12.07 MPa)</td>
+                            </tr>
+                            <tr>
+                                <td>Composition (property of the gas)</td>
+                                <td>
+                                    @if (a.Aga8CompositionInNormalRange == true) { <span class="tag ok">inside</span> }
+                                    else if (a.Aga8CompositionInNormalRange == false) { <span class="tag warn">outside</span> }
+                                    else { <span class="tag">n/a</span> }
+                                </td>
+                                <td class="muted small">
+                                    @if (a.Aga8CompositionViolations.Count > 0) { @string.Join("; ", a.Aga8CompositionViolations) }
+                                    else { <span>CH₄ ≥ 45, N₂ ≤ 50, CO₂ ≤ 30, C₂H₆ ≤ 10, C₃H₈ ≤ 4, butanes ≤ 1, H₂S ≤ 0.02 mol % …</span> }
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </ChildContent>
+            </Card>
+
             <Card Title="Pseudo-critical properties" Flush="true">
                 <table class="data">
                     <thead><tr><th>Method</th><th class="num">Tpc [K]</th><th class="num">Ppc [MPa]</th><th class="num">Tpr</th><th class="num">Ppr</th><th>Note</th></tr></thead>

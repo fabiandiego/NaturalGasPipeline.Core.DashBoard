@@ -32,6 +32,15 @@ public sealed record GasAnalysis
     public required IReadOnlyList<Series> ZCurves { get; init; }
     public required IReadOnlyList<Series> DeviationCurves { get; init; }
     public required IReadOnlyList<string> Warnings { get; init; }
+
+    /// <summary>
+    /// Composition part of the AGA8-DC92 normal range (a property of the gas,
+    /// independent of P and T). null when the engine could not build AGA8 for
+    /// this composition.
+    /// </summary>
+    public bool? Aga8CompositionInNormalRange { get; init; }
+
+    public IReadOnlyList<string> Aga8CompositionViolations { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>Question 1 of the engine: what gas do I have?</summary>
@@ -107,6 +116,19 @@ public static class GasService
 
         // Every Z model the engine offers, at (P, T).
         var models = BuildAllModels(mixture, sg, kay, wa);
+
+        // AGA8 normal range, composition part: checked once per gas, not per (P, T).
+        bool? aga8Composition = null;
+        IReadOnlyList<string> aga8Violations = Array.Empty<string>();
+        if (models.Select(x => x.Model).OfType<Aga8DetailModel>().FirstOrDefault() is { } agaModel)
+        {
+            aga8Composition = agaModel.CompositionWithinNormalRange(out aga8Violations);
+            if (aga8Composition == false)
+            {
+                warnings.Add("Composition is outside the AGA8-DC92 normal range (the stated ≈0.1 % uncertainty in Z does not apply): "
+                             + string.Join("; ", aga8Violations));
+            }
+        }
         double? zAga = null;
         foreach ((string name, string basis, ICompressibilityModel zm) in models)
         {
@@ -196,7 +218,9 @@ public static class GasService
             ZTable = table,
             ZCurves = curves,
             DeviationCurves = deviations,
-            Warnings = warnings
+            Warnings = warnings,
+            Aga8CompositionInNormalRange = aga8Composition,
+            Aga8CompositionViolations = aga8Violations
         };
     }
 
