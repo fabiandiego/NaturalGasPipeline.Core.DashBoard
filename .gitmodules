@@ -1,0 +1,4 @@
+[submodule "engine"]
+	path = engine
+	url = https://github.com/fabiandiego/NaturalGasPipeline.Core.git
+	branch = master

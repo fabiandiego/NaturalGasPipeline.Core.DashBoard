@@ -1,0 +1,173 @@
+name: build-test-deploy
+
+# The dashboard runs the engine itself (compiled to WebAssembly), taken from
+# the git submodule engine/ -> fabiandiego/NaturalGasPipeline.Core (master).
+#
+#   push to main ............ build, test, deploy the pinned engine version
+#   pull_request ............ build and test only
+#   schedule (daily) ........ move engine/ to the latest master; if it changed,
+#                              test, commit the bump, deploy
+#   workflow_dispatch ....... same as schedule, on demand ("Run workflow")
+#   repository_dispatch ..... same, triggered by the engine repo (event "core-updated")
+#
+# An engine update that breaks the bridge or changes a published example
+# result fails the tests and is neither committed nor deployed.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      update_core:
+        description: "Update the engine submodule to the latest master"
+        type: boolean
+        default: true
+  schedule:
+    - cron: "17 3 * * *"
+  repository_dispatch:
+    types: [ core-updated ]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Update engine to the latest master
+        id: bump
+        if: github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.update_core)
+        shell: bash
+        run: |
+          before=$(git -C engine rev-parse HEAD)
+          git submodule update --remote engine
+          after=$(git -C engine rev-parse HEAD)
+          echo "before=$before" >> "$GITHUB_OUTPUT"
+          echo "after=$after" >> "$GITHUB_OUTPUT"
+          if [ "$before" != "$after" ]; then echo "changed=true" >> "$GITHUB_OUTPUT"; else echo "changed=false" >> "$GITHUB_OUTPUT"; fi
+          echo "Engine: $before -> $after"
+
+      - name: Decide whether to continue
+        id: go
+        shell: bash
+        run: |
+          # A scheduled run with no new engine commit has nothing to do.
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ steps.bump.outputs.changed }}" != "true" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"; echo "Engine unchanged; nothing to do."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-dotnet@v4
+        if: steps.go.outputs.run == 'true'
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Test the bridge against the engine's example cases
+        if: steps.go.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -o pipefail
+          dotnet test tests/NaturalGasPipeline.Dashboard.Engine.Tests -c Release --logger "console;verbosity=detailed" 2>&1 | tee test.txt
+
+      - name: Compiler errors and failed tests (annotation)
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import re, os
+          for f in ['test.txt', 'publish.txt']:
+              if not os.path.exists(f): continue
+              text = open(f, encoding='utf-8', errors='replace').read()
+              seen = set()
+              for m in re.finditer(r'[^\n]*(?:error|warning) (?:CS|RZ|BL|NETSDK)\d+[^\n]*', text):
+                  line = m.group(0).strip()
+                  if 'error' not in line or line in seen: continue
+                  seen.add(line)
+                  print('::error title=Build error::' + line[:600])
+              for m in re.finditer(r'\n\s+Failed (\S+)[^\n]*\n(.*?)(?=\n\s+(?:Passed|Failed) |\Z)', text, re.S):
+                  body = (m.group(1) + '\n' + m.group(2))[:3500]
+                  print('::error title=Failed test::' + body.replace('%', '%25').replace('\r', '').replace('\n', '%0A'))
+          PY
+
+      - name: Test report (annotation)
+        if: steps.go.outputs.run == 'true' && success()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          text = open('test.txt', encoding='utf-8', errors='replace').read()
+          keep = [l.strip() for l in text.split('\n') if l.strip().startswith(('R1', 'R2', 'R3', 'S1', 'S2', 'P2 =', 'D (', 'r =', 'Total tests', 'Passed!', 'NaturalGasPipeline.'))]
+          body = '\n'.join(keep)[:3800] or 'no output'
+          print('::notice title=Bridge tests::' + body.replace('%', '%25').replace('\n', '%0A'))
+          PY
+
+      - name: Commit the engine update
+        if: steps.go.outputs.run == 'true' && steps.bump.outputs.changed == 'true' && github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          subject=$(git -C engine log -1 --format=%s)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add engine
+          git commit -m "Update engine to ${{ steps.bump.outputs.after }}" -m "NaturalGasPipeline.Core: $subject" -m "Bridge tests passed against this engine version."
+          git push origin HEAD:main
+
+      - name: Install the WebAssembly AOT toolchain
+        if: steps.go.outputs.run == 'true' && github.event_name != 'pull_request'
+        run: dotnet workload install wasm-tools
+
+      - name: Publish (WebAssembly, AOT)
+        if: steps.go.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -o pipefail
+          aot=false
+          if [ "${{ github.event_name }}" != "pull_request" ]; then aot=true; fi
+          dotnet publish src/NaturalGasPipeline.Dashboard -c Release -o "$RUNNER_TEMP/out" -p:RunAOTCompilation=$aot 2>&1 | tee publish.txt
+
+      - name: Prepare the static site
+        if: steps.go.outputs.run == 'true' && github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          site="$RUNNER_TEMP/out/wwwroot"
+          repo="${{ github.event.repository.name }}"
+          sed -i "s#<base href=\"/\" />#<base href=\"/$repo/\" />#" "$site/index.html"
+          cp "$site/index.html" "$site/404.html"
+          touch "$site/.nojekyll"
+          python3 - "$site/version.json" <<'PY'
+          import json, subprocess, sys, datetime
+          def git(*a, cwd='.'):
+              return subprocess.check_output(['git', *a], cwd=cwd, text=True).strip()
+          info = {
+              'engineRepository': 'fabiandiego/NaturalGasPipeline.Core',
+              'engineCommit': git('rev-parse', 'HEAD', cwd='engine'),
+              'engineDate': git('log', '-1', '--format=%cI', cwd='engine'),
+              'engineSubject': git('log', '-1', '--format=%s', cwd='engine'),
+              'dashboardCommit': git('rev-parse', 'HEAD'),
+              'builtAt': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),
+          }
+          json.dump(info, open(sys.argv[1], 'w'), indent=2)
+          print(info)
+          PY
+
+      - name: Deploy to the gh-pages branch
+        if: steps.go.outputs.run == 'true' && github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          site="$RUNNER_TEMP/out/wwwroot"
+          cd "$site"
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Deploy dashboard ${GITHUB_SHA::7} (engine $(python3 -c "import json;print(json.load(open('version.json'))['engineCommit'][:7])"))"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+  <PropertyGroup>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <BlazorEnableTimeZoneSupport>false</BlazorEnableTimeZoneSupport>
+    <!-- CI publishes with -p:RunAOTCompilation=true (wasm-tools workload) for speed. -->
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\NaturalGasPipeline.Dashboard.Engine\NaturalGasPipeline.Dashboard.Engine.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Engine and units library are used through reflection (model discovery): keep them whole. -->
+    <TrimmerRootAssembly Include="UnitsNet" />
+    <TrimmerRootAssembly Include="NaturalGasPipeline.Core" />
+    <TrimmerRootAssembly Include="NaturalGasPipeline.Thermodynamics" />
+    <TrimmerRootAssembly Include="NaturalGasPipeline.Hydraulics" />
+    <TrimmerRootAssembly Include="NaturalGasPipeline.Correlations" />
+    <TrimmerRootAssembly Include="NaturalGasPipeline.Compression" />
+    <TrimmerRootAssembly Include="NaturalGasPipeline.Network" />
+    <TrimmerRootAssembly Include="NaturalGasPipeline.Mechanics" />
+  </ItemGroup>
+</Project>

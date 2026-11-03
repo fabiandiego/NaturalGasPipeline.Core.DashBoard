@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Bridge between the dashboard UI and the calculation engine.
+    Pure C#: no Blazor types, so it is unit-tested on its own and could be
+    reused by another front end. Every calculation is delegated to the engine;
+    this layer only converts display units and gathers results.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\engine\src\NaturalGasPipeline.Network\NaturalGasPipeline.Network.csproj" />
+    <ProjectReference Include="..\..\engine\src\NaturalGasPipeline.Mechanics\NaturalGasPipeline.Mechanics.csproj" />
+  </ItemGroup>
+</Project>
