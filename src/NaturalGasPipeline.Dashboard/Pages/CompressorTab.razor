@@ -50,7 +50,7 @@
             <Card Title="Compression train" Flush="true">
                 <Aside>@a.ZModel</Aside>
                 <ChildContent>
-                    <Sheet Code="C-01" Title="Process flow, @a.Stages.Count stage(s)">
+                    <Sheet Code="C-01" Title="@($"Process flow, {a.Stages.Count} stage(s)")">
                         <svg viewBox="0 0 900 200" role="img" aria-label="Compression train">
                             @{
                                 int n = a.Stages.Count;

@@ -12,7 +12,7 @@
             <line class="grid @(major ? "major" : "")" x1="@Fmt.S(Px(v))" x2="@Fmt.S(Px(v))" y1="@T" y2="@(H - B)" />
             @if (major)
             {
-                <text class="tick" x="@Fmt.S(Px(v))" y="@(H - B + 16)" text-anchor="middle">@TickLabel(v, LogX)</text>
+                <g><text class="tick" x="@Fmt.S(Px(v))" y="@(H - B + 16)" text-anchor="middle">@TickLabel(v, LogX)</text></g>
             }
         </g>
     }
@@ -22,7 +22,7 @@
             <line class="grid @(major ? "major" : "")" x1="@L" x2="@(W - R)" y1="@Fmt.S(Py(v))" y2="@Fmt.S(Py(v))" />
             @if (major)
             {
-                <text class="tick" x="@(L - 6)" y="@Fmt.S(Py(v) + 4)" text-anchor="end">@TickLabel(v, LogY)</text>
+                <g><text class="tick" x="@(L - 6)" y="@Fmt.S(Py(v) + 4)" text-anchor="end">@TickLabel(v, LogY)</text></g>
             }
         </g>
     }

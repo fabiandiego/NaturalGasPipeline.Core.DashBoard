@@ -105,7 +105,7 @@
 
             <div class="grid cols-even">
                 <Card Title="Pressure along the pipe" Flush="true">
-                    <Sheet Code="S-02" Title="P(x), @I.ProfileParts sub-segments">
+                    <Sheet Code="S-02" Title="@($"P(x), {I.ProfileParts} sub-segments")">
                         <Chart Series="@(new[] { new ChartSeries("P(x)", a.Profile.Select(p => (p.Km, p.MPa)).ToList(), Palette.Blue, Width: 2.5, Area: true, InLegend: false) })"
                                XLabel="Chainage [km]" YLabel="Pressure [MPa(a)]" XMin="0" H="300" />
                     </Sheet>
